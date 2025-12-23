@@ -2,14 +2,12 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 // Helper for safe environment access in Browser/Vite
 const getEnv = (key: string) => {
-    // 1. Try Vite/ESM import.meta.env
     try {
         if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env[key]) {
             return (import.meta as any).env[key];
         }
     } catch(e) {}
     
-    // 2. Try global process.env
     try {
         if (typeof process !== 'undefined' && process.env) {
             return process.env[key];
@@ -191,58 +189,70 @@ export const sendGeneralAiMessage = async (
     generateImage = false, 
     attachments?: {name: string, content: string, mimeType?: string}[]
 ): Promise<{text: string, imageUrl?: string, code?: { lang: string, content: string }}> => {
+    
     // --- Mock Response for Demo ---
     if (!ai) {
         await simulateDelay(1500);
         
         if (generateImage) {
             return { 
-                text: "Como estou no modo de demonstração (sem API Key), imagine uma imagem incrível aqui baseada em: " + message,
+                text: "Como estou no modo de demonstração (sem API Key), gerei esta imagem simulada baseada em: " + message,
                 imageUrl: "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=1000&auto=format&fit=crop" 
             };
         }
 
-        if (message.toLowerCase().includes("código") || message.toLowerCase().includes("html")) {
+        if (message.toLowerCase().includes("código") || message.toLowerCase().includes("html") || message.toLowerCase().includes("script")) {
             return {
-                text: "Aqui está um exemplo de código no modo demonstração:",
+                text: "Aqui está um exemplo de código gerado no modo demonstração:",
                 code: {
                     lang: 'html',
-                    content: '<div class="demo-card">\n  <h2>Exemplo Demo</h2>\n  <button>Clique</button>\n</div>'
+                    content: '<div class="demo-card">\n  <h2>Código Gerado (Demo)</h2>\n  <p>Adicione uma API Key para IA real.</p>\n  <button>Clique</button>\n</div>'
                 }
             };
         }
+        
+        if (attachments && attachments.length > 0) {
+             return {
+                 text: `Recebi seus arquivos (${attachments.map(a => a.name).join(', ')}). No modo demo, finjo que analisei e digo: O código parece limpo, mas faltam testes unitários.`
+             };
+        }
 
-        return { text: "Estou operando em Modo Demonstração porque nenhuma chave de API do Google foi detectada. \n\nPara ativar minha inteligência real, adicione a variável `VITE_GOOGLE_API_KEY` ao seu arquivo .env. \n\nPor enquanto, posso simular respostas para você testar a interface!" };
+        return { text: "Estou operando em Modo Demonstração. Adicione a `VITE_GOOGLE_API_KEY` para ativar:\n- Geração real de imagens (Imagen 3)\n- Análise de arquivos e código\n- Respostas inteligentes completas" };
     }
     
     // --- Real AI Call ---
     try {
+        // 1. Image Generation (Uses Imagen Model)
         if (generateImage) {
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
-                contents: message,
-            });
-            
-            let imageUrl: string | undefined;
-            let text = "";
-
-            if (response.candidates && response.candidates[0].content && response.candidates[0].content.parts) {
-                for (const part of response.candidates[0].content.parts) {
-                    if (part.inlineData) {
-                        imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                    } else if (part.text) {
-                        text += part.text;
+            try {
+                const response = await ai.models.generateImages({
+                    model: 'imagen-3.0-generate-001',
+                    prompt: message,
+                    config: {
+                        numberOfImages: 1,
+                        aspectRatio: '1:1', // Default square
                     }
+                });
+                
+                if (response.generatedImages && response.generatedImages.length > 0) {
+                    const base64Image = response.generatedImages[0].image.imageBytes;
+                    const imageUrl = `data:image/png;base64,${base64Image}`;
+                    return { text: `Aqui está a imagem gerada para: "${message}"`, imageUrl };
+                } else {
+                     return { text: "Não foi possível gerar a imagem. O modelo não retornou dados." };
                 }
+            } catch (imgError) {
+                console.error("Erro na geração de imagem:", imgError);
+                return { text: "Erro ao gerar imagem. Verifique se sua chave de API tem acesso ao modelo Imagen 3." };
             }
-            if (!imageUrl && !text) text = "Não foi possível gerar a imagem.";
-            return { text, imageUrl };
-
-        } else {
-            // Build Context with attachments
+        } 
+        
+        // 2. Text/Code/Multimodal Generation (Uses Gemini 3 Flash)
+        else {
             const parts: any[] = [];
             let textContext = "";
 
+            // Handle Attachments (Code files or Images/Audio for analysis)
             if(attachments && attachments.length > 0) {
                 attachments.forEach(att => {
                     if (att.mimeType && (att.mimeType.startsWith('image/') || att.mimeType.startsWith('audio/'))) {
@@ -257,19 +267,21 @@ export const sendGeneralAiMessage = async (
                              }
                          });
                     } else {
-                        textContext += `--- START OF FILE ${att.name} ---\n${att.content}\n--- END OF FILE ---\n`;
+                        // Text/Code file context
+                        textContext += `\n--- ARQUIVO ANEXADO: ${att.name} ---\n${att.content}\n--- FIM DO ARQUIVO ---\n`;
                     }
                 });
             }
 
             if (textContext) {
-                 textContext += "\nResponda com base nestes arquivos se solicitado.\n";
+                 textContext += "\nAnalise os arquivos acima conforme solicitado na mensagem abaixo.\n";
             }
             
             parts.push({ text: textContext + message });
 
             const model = 'gemini-3-flash-preview'; 
             
+            // Format history for API
             const chatHistory = history.map(h => ({
                 role: h.role,
                 parts: [{ text: h.content }]
@@ -279,7 +291,7 @@ export const sendGeneralAiMessage = async (
                 model: model,
                 history: chatHistory,
                 config: {
-                    systemInstruction: "Você é o assistente JP Projects. Você pode gerar código HTML/CSS/JS completo, analisar imagens e ouvir áudios. Se o usuário pedir código, forneça-o em blocos Markdown.",
+                    systemInstruction: "Você é o assistente JP Projects, um especialista Full Stack e Gerente de Projetos. \n1. Se o usuário pedir código, forneça-o COMPLETO e FUNCIONAL dentro de blocos Markdown. \n2. Se o usuário anexar arquivos, analise-os detalhadamente (bugs, melhorias, explicações). \n3. Se o usuário pedir para gerar uma imagem, diga que tentará fazer isso.",
                 }
             });
 
@@ -287,7 +299,7 @@ export const sendGeneralAiMessage = async (
             const responseText = result.text;
             
             // Extract code block if present
-            const codeBlockRegex = /```(html|css|javascript|js|ts|typescript)?\n([\s\S]*?)```/;
+            const codeBlockRegex = /```(html|css|javascript|js|ts|typescript|json)?\n([\s\S]*?)```/;
             const match = responseText.match(codeBlockRegex);
             
             let codeData = undefined;
@@ -303,11 +315,10 @@ export const sendGeneralAiMessage = async (
     } catch (error: any) {
         console.error("Erro no chat IA:", error);
         
-        // Handle explicit API Key missing error from SDK
         if (error.message && error.message.includes('API key')) {
-             return { text: "⚠️ Erro de Configuração: Sua chave de API do Google parece inválida ou vazia. Verifique suas variáveis de ambiente." };
+             return { text: "⚠️ Erro de Configuração: Sua chave de API do Google parece inválida ou vazia." };
         }
 
-        return { text: "Desculpe, ocorreu um erro na comunicação com a IA. Tente novamente mais tarde." };
+        return { text: "Desculpe, ocorreu um erro na comunicação com a IA. Tente reformular sua solicitação." };
     }
 };
