@@ -39,7 +39,8 @@ const simulateDelay = (ms = 1000) => new Promise(resolve => setTimeout(resolve, 
 // --- Helper: Get Current Date Context ---
 const getDateContext = () => {
     const now = new Date();
-    return `DATA ATUAL: ${now.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}. HORA: ${now.toLocaleTimeString('pt-BR')}.`;
+    // Force specific formatting to ensure model understands
+    return `HOJE É: ${now.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}. HORA ATUAL: ${now.toLocaleTimeString('pt-BR')}.`;
 };
 
 // --- Tool Definitions ---
@@ -242,11 +243,16 @@ const executeImageGeneration = async (prompt: string): Promise<{ text: string, i
     } catch (imgError: any) {
         console.error("Erro na geração de imagem (Tool):", imgError);
         
-        // Handle Rate Limit Specifically
-        if (imgError.message?.includes('429') || imgError.status === 429) {
+        // Handle Rate Limit Specifically (429)
+        const isRateLimit = imgError.message?.includes('429') || 
+                           imgError.status === 429 || 
+                           (imgError.error && imgError.error.code === 429);
+
+        if (isRateLimit) {
+            const safePrompt = prompt ? prompt.substring(0, 50) : "Imagem";
             return { 
-                text: "⚠️ **Limite de Cota Atingido**\nO limite gratuito da API Gemini para geração de imagens foi excedido temporariamente. \n\nAbaixo está uma imagem de exemplo (Placeholder) para demonstrar o layout:", 
-                imageUrl: `https://placehold.co/600x600/1e293b/white?text=${encodeURIComponent(prompt.substring(0,20) + '...')}`
+                text: "⚠️ **Limite de Cota de Imagem Atingido**\n\nO limite gratuito da API Gemini para geração de imagens foi excedido temporariamente. \n\nAbaixo está um **Exemplo Visual (Placeholder)** para não interromper seu fluxo:", 
+                imageUrl: `https://placehold.co/600x600/1e293b/white?text=${encodeURIComponent(safePrompt + '...')}`
             };
         }
 
@@ -308,9 +314,12 @@ export const sendGeneralAiMessage = async (
                 parts: [{ text: h.content }]
             }));
 
-            // INJECT DATE CONTEXT HERE
+            // INJECT DATE CONTEXT HERE - VERY EXPLICITLY
             const systemInstruction = `Você é o assistente JP Projects.
+            
+            IMPORTANTE:
             ${getDateContext()}
+            Use esta data para todos os cálculos temporais. Se o usuário mencionar uma data diferente, corrija gentilmente com base na data de hoje.
             
             Regras:
             1. Se o usuário pedir código, forneça-o em blocos Markdown.
@@ -371,6 +380,13 @@ export const sendGeneralAiMessage = async (
         }
     } catch (error: any) {
         console.error("Erro no chat IA:", error);
+        
+        // Handle Rate Limit Specifically for Chat (in case text model fails too)
+        const isRateLimit = error.message?.includes('429') || error.status === 429;
+        if (isRateLimit) {
+             return { text: "⚠️ **Muitas Requisições**\nEstamos recebendo muitas solicitações no momento. Por favor, aguarde alguns segundos e tente novamente." };
+        }
+
         if (error.message && error.message.includes('API key')) {
              return { text: "⚠️ Erro de Configuração: Sua chave de API do Google parece inválida ou vazia." };
         }

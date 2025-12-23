@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { User, Team } from '../types';
 import { Avatar } from './Avatar';
-import { Mail, Copy, RefreshCw, UserPlus, Check, Hash, Link as LinkIcon, Shield, Trash2, MoreVertical, Plus, Send } from 'lucide-react';
+import { Mail, Copy, RefreshCw, UserPlus, Check, Hash, Link as LinkIcon, Shield, Trash2, MoreVertical, Plus, Send, Edit2 } from 'lucide-react';
 import { Modal } from './Modal';
+import { api } from '../services/dataService';
 
 interface TeamViewProps {
     users: User[];
@@ -16,6 +17,10 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam }) => {
     const [inviteCode, setInviteCode] = useState(currentTeam.inviteCode || 'JP-TEAM-000');
     const [copied, setCopied] = useState(false);
     const [isSending, setIsSending] = useState(false);
+    
+    // Edit Team State
+    const [isEditing, setIsEditing] = useState(false);
+    const [teamName, setTeamName] = useState(currentTeam.name);
 
     // Filter users belonging to this team
     const teamMembers = users.filter(u => currentTeam.members.includes(u.id));
@@ -43,17 +48,41 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam }) => {
         }, 1500);
     };
 
+    const handleUpdateTeam = async () => {
+        if (!teamName.trim()) return;
+        await api.updateTeam(currentTeam.id, { name: teamName });
+        setIsEditing(false);
+        // We might want to trigger a reload in App, but simple local update for now:
+        currentTeam.name = teamName; 
+    };
+
     return (
         <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-[#1b263b] p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                        {currentTeam.name}
+                    <div className="flex items-center gap-3">
+                        {isEditing ? (
+                            <div className="flex items-center gap-2">
+                                <input 
+                                    value={teamName}
+                                    onChange={(e) => setTeamName(e.target.value)}
+                                    className="text-2xl font-bold bg-white dark:bg-[#0d1b2a] border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-800 dark:text-white"
+                                    autoFocus
+                                />
+                                <button onClick={handleUpdateTeam} className="bg-green-500 text-white p-1 rounded hover:bg-green-600"><Check size={16} /></button>
+                                <button onClick={() => setIsEditing(false)} className="bg-red-500 text-white p-1 rounded hover:bg-red-600"><Trash2 size={16} /></button>
+                            </div>
+                        ) : (
+                            <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2 group cursor-pointer" onClick={() => setIsEditing(true)}>
+                                {currentTeam.name}
+                                <Edit2 size={16} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </h2>
+                        )}
                         <span className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 px-2 py-1 rounded-full border border-indigo-200 dark:border-indigo-700">
                             {teamMembers.length} membros
                         </span>
-                    </h2>
+                    </div>
                     <p className="text-gray-500 text-sm mt-1">{currentTeam.description}</p>
                 </div>
                 <button 

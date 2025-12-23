@@ -281,6 +281,15 @@ export const api = {
       }
   },
 
+  updateTeam: async (teamId: string, updates: Partial<Team>) => {
+      const dbUpdates: any = {};
+      if (updates.name) dbUpdates.name = updates.name;
+      if (updates.description) dbUpdates.description = updates.description;
+      
+      const { error } = await supabase.from('teams').update(dbUpdates).eq('id', teamId);
+      return !error;
+  },
+
   // --- TASKS CRUD ---
   createTask: async (task: Task) => {
     // Flatten Task object to DB snake_case structure
