@@ -450,7 +450,7 @@ export default function App() {
            {activeView === 'board' && renderBoard()}
            {activeView === 'gantt' && <GanttView tasks={filteredTasks} users={users} onTaskClick={setSelectedTask} />}
            {activeView === 'dashboard' && <DashboardView tasks={tasks.filter(t => t.teamId === currentTeamId)} users={users} />}
-           {activeView === 'routines' && <RoutineTasksView routines={routines} users={users} onToggleRoutine={(id) => { const r = routines.find(x => x.id === id); if(r) api.updateRoutine(id, { lastCompletedDate: new Date().toISOString().split('T')[0] }).then(loadData); }} onAddRoutine={async (r) => { await api.createRoutine(r); loadData(); }} />}
+           {activeView === 'routines' && <RoutineTasksView routines={routines} users={users} currentTeamId={currentTeamId || ''} onToggleRoutine={(id) => { const r = routines.find(x => x.id === id); if(r) api.updateRoutine(id, { lastCompletedDate: new Date().toISOString().split('T')[0] }).then(loadData); }} onAddRoutine={async (r) => { await api.createRoutine(r); loadData(); }} />}
            {activeView === 'profile' && <div>Profile Component Here</div>} 
            {activeView === 'ai' && <AIAssistantView />}
            {activeView === 'meeting' && currentUser && <MeetingRoomView users={users} currentUser={currentUser} />}

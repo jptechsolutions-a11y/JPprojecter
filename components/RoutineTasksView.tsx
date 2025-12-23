@@ -7,11 +7,12 @@ import { Modal } from './Modal';
 interface RoutineTasksViewProps {
     routines: RoutineTask[];
     users: User[];
+    currentTeamId: string;
     onToggleRoutine: (routineId: string) => void;
     onAddRoutine: (routine: RoutineTask) => void;
 }
 
-export const RoutineTasksView: React.FC<RoutineTasksViewProps> = ({ routines, users, onToggleRoutine, onAddRoutine }) => {
+export const RoutineTasksView: React.FC<RoutineTasksViewProps> = ({ routines, users, currentTeamId, onToggleRoutine, onAddRoutine }) => {
     const [filterDay, setFilterDay] = useState<number>(new Date().getDay()); // Default to today
     const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -47,12 +48,14 @@ export const RoutineTasksView: React.FC<RoutineTasksViewProps> = ({ routines, us
             if((formData.get(`day-${d.val}`) as string) === 'on') selectedDays.push(d.val);
         });
 
+        const rawAssigneeId = formData.get('assigneeId') as string;
+
         const newRoutine: RoutineTask = {
             id: crypto.randomUUID(),
             title: formData.get('title') as string,
             description: formData.get('description') as string,
-            teamId: 't1', // Mock
-            assigneeId: formData.get('assigneeId') as string,
+            teamId: currentTeamId, // Use the actual Team ID
+            assigneeId: rawAssigneeId && rawAssigneeId !== '' ? rawAssigneeId : undefined, // Handle empty string
             frequency: selectedDays.length === 5 ? 'daily' : 'weekly', // Simplified logic
             daysOfWeek: selectedDays,
             time: formData.get('time') as string,

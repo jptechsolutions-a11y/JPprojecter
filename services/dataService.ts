@@ -375,12 +375,13 @@ export const api = {
         team_id: routine.teamId,
         title: routine.title,
         description: routine.description,
-        assignee_id: routine.assigneeId,
+        assignee_id: routine.assigneeId && routine.assigneeId.trim() !== '' ? routine.assigneeId : null, // Fix empty string UUID error
         frequency: routine.frequency,
         days_of_week: routine.daysOfWeek,
         time: routine.time
     };
     const { error } = await supabase.from('routines').insert(dbRoutine);
+    if(error) console.error("Error creating routine:", error);
     return !error;
   },
 
@@ -389,6 +390,7 @@ export const api = {
       if(updates.lastCompletedDate) dbUpdates.last_completed_date = updates.lastCompletedDate;
       
       const { error } = await supabase.from('routines').update(dbUpdates).eq('id', routineId);
+      if(error) console.error("Error updating routine:", error);
       return !error;
   }
 };
