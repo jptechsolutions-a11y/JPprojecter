@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 
 // Helper for safe environment access in Browser/Vite
 const getEnv = (key: string) => {
@@ -35,6 +35,22 @@ if (apiKey) {
 
 // --- Helper: Mock Delay ---
 const simulateDelay = (ms = 1000) => new Promise(resolve => setTimeout(resolve, ms));
+
+// --- Tool Definitions ---
+const imageGenerationTool: FunctionDeclaration = {
+    name: "generate_image",
+    description: "Gera uma imagem ou ilustração baseada em uma descrição detalhada (prompt). Use esta ferramenta quando o usuário pedir explicitamente para criar, desenhar, imaginar ou gerar uma imagem, foto ou cena.",
+    parameters: {
+        type: Type.OBJECT,
+        properties: {
+            prompt: {
+                type: Type.STRING,
+                description: "A descrição detalhada da imagem a ser gerada, em inglês ou português."
+            }
+        },
+        required: ["prompt"]
+    }
+};
 
 // --- Helper Functions ---
 
@@ -183,10 +199,35 @@ export const generateFullProject = async (prompt: string): Promise<{name: string
     }
 };
 
+const executeImageGeneration = async (prompt: string): Promise<{ text: string, imageUrl?: string }> => {
+    if (!ai) return { text: "Erro: IA não inicializada." };
+    try {
+        const response = await ai.models.generateImages({
+            model: 'imagen-3.0-generate-001',
+            prompt: prompt,
+            config: {
+                numberOfImages: 1,
+                aspectRatio: '1:1',
+            }
+        });
+        
+        if (response.generatedImages && response.generatedImages.length > 0) {
+            const base64Image = response.generatedImages[0].image.imageBytes;
+            const imageUrl = `data:image/png;base64,${base64Image}`;
+            return { text: `Aqui está a imagem gerada para: "${prompt}"`, imageUrl };
+        } else {
+             return { text: "Não foi possível gerar a imagem. O modelo não retornou dados." };
+        }
+    } catch (imgError) {
+        console.error("Erro na geração de imagem (Tool):", imgError);
+        return { text: "Tentei gerar a imagem, mas ocorreu um erro no serviço Imagen. Tente um prompt mais simples." };
+    }
+};
+
 export const sendGeneralAiMessage = async (
     message: string, 
     history: any[], 
-    generateImage = false, 
+    isExplicitImageRequest = false, 
     attachments?: {name: string, content: string, mimeType?: string}[]
 ): Promise<{text: string, imageUrl?: string, code?: { lang: string, content: string }}> => {
     
@@ -194,7 +235,11 @@ export const sendGeneralAiMessage = async (
     if (!ai) {
         await simulateDelay(1500);
         
-        if (generateImage) {
+        // Simulating the intent detection in mock mode
+        const lowerMsg = message.toLowerCase();
+        const mockImageTrigger = isExplicitImageRequest || lowerMsg.includes('desenhe') || lowerMsg.includes('imagem') || lowerMsg.includes('foto');
+
+        if (mockImageTrigger) {
             return { 
                 text: "Como estou no modo de demonstração (sem API Key), gerei esta imagem simulada baseada em: " + message,
                 imageUrl: "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=1000&auto=format&fit=crop" 
@@ -211,48 +256,21 @@ export const sendGeneralAiMessage = async (
             };
         }
         
-        if (attachments && attachments.length > 0) {
-             return {
-                 text: `Recebi seus arquivos (${attachments.map(a => a.name).join(', ')}). No modo demo, finjo que analisei e digo: O código parece limpo, mas faltam testes unitários.`
-             };
-        }
-
         return { text: "Estou operando em Modo Demonstração. Adicione a `VITE_GOOGLE_API_KEY` para ativar:\n- Geração real de imagens (Imagen 3)\n- Análise de arquivos e código\n- Respostas inteligentes completas" };
     }
     
     // --- Real AI Call ---
     try {
-        // 1. Image Generation (Uses Imagen Model)
-        if (generateImage) {
-            try {
-                const response = await ai.models.generateImages({
-                    model: 'imagen-3.0-generate-001',
-                    prompt: message,
-                    config: {
-                        numberOfImages: 1,
-                        aspectRatio: '1:1', // Default square
-                    }
-                });
-                
-                if (response.generatedImages && response.generatedImages.length > 0) {
-                    const base64Image = response.generatedImages[0].image.imageBytes;
-                    const imageUrl = `data:image/png;base64,${base64Image}`;
-                    return { text: `Aqui está a imagem gerada para: "${message}"`, imageUrl };
-                } else {
-                     return { text: "Não foi possível gerar a imagem. O modelo não retornou dados." };
-                }
-            } catch (imgError) {
-                console.error("Erro na geração de imagem:", imgError);
-                return { text: "Erro ao gerar imagem. Verifique se sua chave de API tem acesso ao modelo Imagen 3." };
-            }
+        // Fast Path: Explicit Image Request (Frontend detected)
+        if (isExplicitImageRequest) {
+            return await executeImageGeneration(message);
         } 
         
-        // 2. Text/Code/Multimodal Generation (Uses Gemini 3 Flash)
+        // Standard Chat Path with Tools (Implicit Image Request)
         else {
             const parts: any[] = [];
             let textContext = "";
 
-            // Handle Attachments (Code files or Images/Audio for analysis)
             if(attachments && attachments.length > 0) {
                 attachments.forEach(att => {
                     if (att.mimeType && (att.mimeType.startsWith('image/') || att.mimeType.startsWith('audio/'))) {
@@ -267,7 +285,6 @@ export const sendGeneralAiMessage = async (
                              }
                          });
                     } else {
-                        // Text/Code file context
                         textContext += `\n--- ARQUIVO ANEXADO: ${att.name} ---\n${att.content}\n--- FIM DO ARQUIVO ---\n`;
                     }
                 });
@@ -281,7 +298,6 @@ export const sendGeneralAiMessage = async (
 
             const model = 'gemini-3-flash-preview'; 
             
-            // Format history for API
             const chatHistory = history.map(h => ({
                 role: h.role,
                 parts: [{ text: h.content }]
@@ -291,11 +307,26 @@ export const sendGeneralAiMessage = async (
                 model: model,
                 history: chatHistory,
                 config: {
-                    systemInstruction: "Você é o assistente JP Projects, um especialista Full Stack e Gerente de Projetos. \n1. Se o usuário pedir código, forneça-o COMPLETO e FUNCIONAL dentro de blocos Markdown. \n2. Se o usuário anexar arquivos, analise-os detalhadamente (bugs, melhorias, explicações). \n3. Se o usuário pedir para gerar uma imagem, diga que tentará fazer isso.",
+                    // Provide the image tool here.
+                    tools: [{ functionDeclarations: [imageGenerationTool] }],
+                    systemInstruction: "Você é o assistente JP Projects. \n1. Se o usuário pedir código, forneça-o em blocos Markdown. \n2. Se o usuário pedir uma imagem/desenho/foto, USE A FERRAMENTA 'generate_image'. NÃO invente JSON de resposta, chame a função.",
                 }
             });
 
             const result = await chat.sendMessage({ message: parts });
+            
+            // Check for Function Call (Tool Use)
+            const functionCalls = result.functionCalls;
+            if (functionCalls && functionCalls.length > 0) {
+                const call = functionCalls[0];
+                if (call.name === 'generate_image') {
+                    // Extract prompt and run Imagen
+                    const prompt = (call.args as any).prompt;
+                    return await executeImageGeneration(prompt);
+                }
+            }
+
+            // Normal Text Response
             const responseText = result.text;
             
             // Extract code block if present
@@ -319,6 +350,6 @@ export const sendGeneralAiMessage = async (
              return { text: "⚠️ Erro de Configuração: Sua chave de API do Google parece inválida ou vazia." };
         }
 
-        return { text: "Desculpe, ocorreu um erro na comunicação com a IA. Tente reformular sua solicitação." };
+        return { text: "Desculpe, ocorreu um erro na comunicação com a IA." };
     }
 };

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Image as ImageIcon, Code as CodeIcon, Sparkles, Loader2, Copy, Paperclip, Download, RefreshCw, PanelRightClose, PanelRightOpen, History, MessageSquare, Plus, Zap, Trash2, Maximize2, Mic, FileAudio, Minimize2, Save } from 'lucide-react';
+import { Send, Bot, User, Image as ImageIcon, Code as CodeIcon, Loader2, Paperclip, FileAudio, History, MessageSquare, Plus, Zap, Trash2, Maximize2, Minimize2, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { sendGeneralAiMessage } from '../services/geminiService';
 import { ChatMessage, ChatHistoryItem, AutomationRule } from '../types';
 import { Modal } from './Modal';
@@ -23,9 +23,7 @@ export const AIAssistantView: React.FC = () => {
     
     // State for Canvas/Execution
     const [canvasContent, setCanvasContent] = useState<string>('');
-    const [automations, setAutomations] = useState<AutomationRule[]>([
-        { id: 'a1', name: 'Relatório Semanal', trigger: 'Sexta-feira 17:00', prompt: 'Gerar resumo das tarefas concluídas', active: true }
-    ]);
+    const [automations, setAutomations] = useState<AutomationRule[]>([]);
 
     // Automation Modal
     const [isAutoModalOpen, setIsAutoModalOpen] = useState(false);
@@ -41,7 +39,6 @@ export const AIAssistantView: React.FC = () => {
         if (savedHistory) {
             try {
                 const parsed = JSON.parse(savedHistory);
-                // Fix date strings back to Date objects
                 const restored = parsed.map((h: any) => ({
                     ...h,
                     date: new Date(h.date),
@@ -52,7 +49,7 @@ export const AIAssistantView: React.FC = () => {
                     setCurrentChatId(restored[0].id);
                     setMessages(restored[0].messages);
                 } else {
-                    createNewChat(); // Init default if empty
+                    createNewChat(); 
                 }
             } catch (e) {
                 console.error("Error loading chat history", e);
@@ -71,13 +68,14 @@ export const AIAssistantView: React.FC = () => {
         }
     }, []);
 
-    // Save on Change
+    // Save History on Change
     useEffect(() => {
         if (history.length > 0) {
             localStorage.setItem('jp_chat_history', JSON.stringify(history));
         }
     }, [history]);
 
+    // Save Automations on Change
     useEffect(() => {
         localStorage.setItem('jp_automations', JSON.stringify(automations));
     }, [automations]);
@@ -94,7 +92,7 @@ export const AIAssistantView: React.FC = () => {
             setCurrentChatId(chatId);
             setMessages(chat.messages);
             setShowCanvas(false);
-            if (window.innerWidth < 768) setShowSidebar(false); // Auto close mobile sidebar
+            if (window.innerWidth < 768) setShowSidebar(false); 
         }
     };
 
@@ -104,7 +102,7 @@ export const AIAssistantView: React.FC = () => {
             id: crypto.randomUUID(), 
             role: 'model', 
             type: 'text', 
-            content: 'Olá! Sou seu assistente Full-Stack. Posso gerar imagens, analisar arquivos, escrever código e criar automações. Como posso ajudar?', 
+            content: 'Olá! Sou seu assistente Full-Stack. Posso gerar imagens, analisar arquivos, escrever código e criar automações.', 
             timestamp: new Date() 
         };
         
@@ -126,6 +124,7 @@ export const AIAssistantView: React.FC = () => {
         if(confirm('Excluir esta conversa?')) {
             const newHist = history.filter(h => h.id !== chatId);
             setHistory(newHist);
+            localStorage.setItem('jp_chat_history', JSON.stringify(newHist)); // Force save immediately
             if (currentChatId === chatId) {
                 if (newHist.length > 0) loadChat(newHist[0].id);
                 else createNewChat();
@@ -156,7 +155,6 @@ export const AIAssistantView: React.FC = () => {
                 setAttachments(prev => [...prev, { name: file.name, content: text }]);
             }
         }
-        // Reset input
         e.target.value = '';
     };
 
@@ -175,25 +173,20 @@ export const AIAssistantView: React.FC = () => {
         const newMessages = [...messages, userMsg];
         setMessages(newMessages);
         setInputValue('');
-        setAttachments([]); // Clear attachments after sending
+        setAttachments([]);
         setIsLoading(true);
 
-        // Detect Intent
+        // Improved Regex for Image Intent
         const lowerInput = userMsg.content.toLowerCase();
-        // Trigger Image Generation if explicit
         const isImageGenerationRequest = attachments.length === 0 && (
-            lowerInput.includes('gerar imagem') || 
-            lowerInput.includes('criar imagem') || 
-            lowerInput.includes('desenhar')
+            /(gerar|criar|fazer|desenhar) (uma )?(imagem|foto|desenho|ilustração|logo|banner)/i.test(lowerInput) ||
+            /(desenhe|imagine|pinte) /i.test(lowerInput)
         );
         
-        // Pass history context (limit to last 10 messages to save context window)
         const contextHistory = newMessages.slice(-10).map(m => ({ role: m.role, content: m.content }));
 
-        // AI Call
         const response = await sendGeneralAiMessage(userMsg.content, contextHistory, isImageGenerationRequest, userMsg.attachments);
 
-        // Handle Response
         const aiMsg: ChatMessage = {
             id: crypto.randomUUID(),
             role: 'model',
@@ -209,34 +202,47 @@ export const AIAssistantView: React.FC = () => {
         setMessages(updatedMessages);
         setIsLoading(false);
 
-        // If code was generated, auto-open canvas
         if (response.code) {
             setShowCanvas(true);
             setCanvasContent(response.code.content);
         }
 
-        // Update History State
-        setHistory(prev => prev.map(h => {
-            if (h.id === currentChatId) {
-                // Update title if it's the first real interaction
-                const newTitle = messages.length <= 1 ? userMsg.content.substring(0, 30) + '...' : h.title;
-                return { ...h, title: newTitle, messages: updatedMessages };
+        // Robust History Update
+        setHistory(prev => {
+            const updated = prev.map(h => {
+                if (h.id === currentChatId) {
+                    const newTitle = h.messages.length <= 1 ? userMsg.content.substring(0, 30) + '...' : h.title;
+                    return { ...h, title: newTitle, messages: updatedMessages };
+                }
+                return h;
+            });
+            // Also ensure active chat exists if somehow lost
+            if (!updated.find(h => h.id === currentChatId) && currentChatId) {
+                 // Should not happen, but safe fallback
             }
-            return h;
-        }));
+            return updated;
+        });
     };
 
     // --- Automation CRUD ---
     const handleAddAutomation = (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
+        e.preventDefault(); // Stop page reload
         const formData = new FormData(e.currentTarget);
+        
+        const name = formData.get('name') as string;
+        const trigger = formData.get('trigger') as string;
+        const prompt = formData.get('prompt') as string;
+
+        if (!name || !trigger || !prompt) return;
+
         const newAuto: AutomationRule = {
             id: crypto.randomUUID(),
-            name: formData.get('name') as string,
-            trigger: formData.get('trigger') as string,
-            prompt: formData.get('prompt') as string,
+            name,
+            trigger,
+            prompt,
             active: true
         };
+        
         setAutomations(prev => [...prev, newAuto]);
         setIsAutoModalOpen(false);
     };
@@ -254,7 +260,7 @@ export const AIAssistantView: React.FC = () => {
     // --- Renderers ---
 
     const renderAutomations = () => (
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 animate-fade-in">
             <div className="flex justify-between items-center">
                 <h3 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
                     <Zap size={20} className="text-yellow-500" /> Automações de IA
@@ -268,7 +274,7 @@ export const AIAssistantView: React.FC = () => {
             </div>
             
             {automations.length === 0 && (
-                <div className="text-center py-10 text-gray-400">
+                <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
                     <Zap size={48} className="mx-auto mb-2 opacity-20" />
                     <p>Nenhuma automação criada.</p>
                 </div>
@@ -294,7 +300,7 @@ export const AIAssistantView: React.FC = () => {
                                 />
                                 <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-300 dark:peer-focus:ring-indigo-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-indigo-600"></div>
                             </label>
-                            <button onClick={() => handleDeleteAutomation(auto.id)} className="text-gray-400 hover:text-red-500 p-1 transition-colors"><Trash2 size={16} /></button>
+                            <button onClick={() => handleDeleteAutomation(auto.id)} className="text-gray-400 hover:text-red-500 p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"><Trash2 size={16} /></button>
                         </div>
                     </div>
                 ))}
