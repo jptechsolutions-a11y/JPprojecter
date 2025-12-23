@@ -19,24 +19,33 @@ const getEnv = (key: string) => {
     return '';
 };
 
-// Prefer VITE_ prefixed keys if available, fallback to standard keys
-const apiKey = getEnv('VITE_GOOGLE_API_KEY') || getEnv('GOOGLE_API_KEY') || getEnv('API_KEY');
+// Robust Key Retrieval
+const rawApiKey = getEnv('VITE_GOOGLE_API_KEY') || getEnv('GOOGLE_API_KEY') || getEnv('API_KEY');
+const apiKey = (rawApiKey && rawApiKey.trim() !== '' && rawApiKey !== 'undefined' && rawApiKey !== 'null') ? rawApiKey : null;
 
 let ai: GoogleGenAI | null = null;
+
 if (apiKey) {
     try {
         ai = new GoogleGenAI({ apiKey: apiKey });
     } catch (e) {
-        console.warn("Failed to initialize GoogleGenAI", e);
+        console.warn("Failed to initialize GoogleGenAI. Falling back to Mock Mode.", e);
     }
 } else {
-    console.warn("Google API Key is missing. AI features will be disabled.");
+    console.warn("Google API Key is missing. Running in Mock Mode (Simulated AI).");
 }
+
+// --- Helper: Mock Delay ---
+const simulateDelay = (ms = 1000) => new Promise(resolve => setTimeout(resolve, ms));
 
 // --- Helper Functions ---
 
 export const generateTaskDescription = async (taskTitle: string): Promise<string> => {
-  if (!ai) return "IA indisponível: Chave de API não configurada.";
+  if (!ai) {
+      await simulateDelay();
+      return `[IA Demo] Esta é uma descrição gerada automaticamente para a tarefa "${taskTitle}". \n\nO objetivo principal é garantir que todos os requisitos sejam atendidos com qualidade e dentro do prazo estipulado. Recomendamos dividir esta atividade em etapas menores para melhor acompanhamento.`;
+  }
+  
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -46,12 +55,22 @@ export const generateTaskDescription = async (taskTitle: string): Promise<string
     return response.text || "Não foi possível gerar a descrição.";
   } catch (error) {
     console.error("Erro ao gerar descrição:", error);
-    return "Erro ao conectar com a IA.";
+    return "Erro ao conectar com a IA (Verifique sua API Key).";
   }
 };
 
 export const generateSubtasks = async (taskTitle: string, taskDescription: string): Promise<string[]> => {
-  if (!ai) return [];
+  if (!ai) {
+      await simulateDelay();
+      return [
+          "Analisar requisitos iniciais",
+          "Criar documentação técnica",
+          "Desenvolver protótipo funcional",
+          "Realizar testes de validação",
+          "Aprovar com stakeholders"
+      ];
+  }
+
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -70,12 +89,16 @@ export const generateSubtasks = async (taskTitle: string, taskDescription: strin
     return JSON.parse(jsonStr) as string[];
   } catch (error) {
     console.error("Erro ao gerar sub-tarefas:", error);
-    return [];
+    return ["Erro na IA - Adicione itens manualmente"];
   }
 };
 
 export const assistCode = async (currentCode: string, instruction: string, language: string): Promise<string> => {
-    if (!ai) return currentCode + "\n// Erro: Chave de API da IA não configurada.";
+    if (!ai) {
+        await simulateDelay();
+        return `${currentCode}\n\n// [IA Demo] Código otimizado conforme: "${instruction}"\n// (Adicione uma API Key válida para geração real)`;
+    }
+
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
@@ -96,7 +119,11 @@ export const assistCode = async (currentCode: string, instruction: string, langu
 }
 
 export const fixCodeError = async (code: string, error: string, language: string): Promise<string> => {
-    if (!ai) return code;
+    if (!ai) {
+        await simulateDelay();
+        return code + "\n// [IA Demo] Correção simulada aplicada.";
+    }
+
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
@@ -117,7 +144,15 @@ export const fixCodeError = async (code: string, error: string, language: string
 };
 
 export const generateFullProject = async (prompt: string): Promise<{name: string, language: string, content: string}[]> => {
-    if (!ai) return [];
+    if (!ai) {
+        await simulateDelay(2000);
+        return [
+            { name: "index.html", language: "html", content: "<!-- Demo Project -->\n<h1>Projeto Gerado (Demo)</h1>\n<p>Adicione uma API Key para gerar projetos reais.</p>" },
+            { name: "style.css", language: "css", content: "body { background: #f0f0f0; font-family: sans-serif; text-align: center; padding: 50px; }" },
+            { name: "script.js", language: "javascript", content: "console.log('Demo running...');" }
+        ];
+    }
+
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
@@ -156,8 +191,31 @@ export const sendGeneralAiMessage = async (
     generateImage = false, 
     attachments?: {name: string, content: string, mimeType?: string}[]
 ): Promise<{text: string, imageUrl?: string, code?: { lang: string, content: string }}> => {
-    if (!ai) return { text: "⚠️ A IA não está configurada. Por favor, verifique a variável de ambiente VITE_GOOGLE_API_KEY." };
+    // --- Mock Response for Demo ---
+    if (!ai) {
+        await simulateDelay(1500);
+        
+        if (generateImage) {
+            return { 
+                text: "Como estou no modo de demonstração (sem API Key), imagine uma imagem incrível aqui baseada em: " + message,
+                imageUrl: "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=1000&auto=format&fit=crop" 
+            };
+        }
+
+        if (message.toLowerCase().includes("código") || message.toLowerCase().includes("html")) {
+            return {
+                text: "Aqui está um exemplo de código no modo demonstração:",
+                code: {
+                    lang: 'html',
+                    content: '<div class="demo-card">\n  <h2>Exemplo Demo</h2>\n  <button>Clique</button>\n</div>'
+                }
+            };
+        }
+
+        return { text: "Estou operando em Modo Demonstração porque nenhuma chave de API do Google foi detectada. \n\nPara ativar minha inteligência real, adicione a variável `VITE_GOOGLE_API_KEY` ao seu arquivo .env. \n\nPor enquanto, posso simular respostas para você testar a interface!" };
+    }
     
+    // --- Real AI Call ---
     try {
         if (generateImage) {
             const response = await ai.models.generateContent({
@@ -182,16 +240,12 @@ export const sendGeneralAiMessage = async (
 
         } else {
             // Build Context with attachments
-            // Separate text context from multimodal (audio/image) parts
             const parts: any[] = [];
-            
             let textContext = "";
 
             if(attachments && attachments.length > 0) {
                 attachments.forEach(att => {
-                    // If it has a mimeType starting with audio or image, treat as inlineData
                     if (att.mimeType && (att.mimeType.startsWith('image/') || att.mimeType.startsWith('audio/'))) {
-                         // Extract base64 if it has the data: prefix
                          const base64Data = att.content.includes('base64,') 
                             ? att.content.split('base64,')[1] 
                             : att.content;
@@ -203,7 +257,6 @@ export const sendGeneralAiMessage = async (
                              }
                          });
                     } else {
-                        // Treat as text file context
                         textContext += `--- START OF FILE ${att.name} ---\n${att.content}\n--- END OF FILE ---\n`;
                     }
                 });
@@ -213,12 +266,10 @@ export const sendGeneralAiMessage = async (
                  textContext += "\nResponda com base nestes arquivos se solicitado.\n";
             }
             
-            // Add the user message and text context
             parts.push({ text: textContext + message });
 
-            const model = 'gemini-3-flash-preview'; // Supports multimodal
+            const model = 'gemini-3-flash-preview'; 
             
-            // Simple history mapping (text only for previous turns to avoid complexity in this demo)
             const chatHistory = history.map(h => ({
                 role: h.role,
                 parts: [{ text: h.content }]
@@ -232,7 +283,6 @@ export const sendGeneralAiMessage = async (
                 }
             });
 
-            // We use sendMessage with the parts array which can contain text and inlineData
             const result = await chat.sendMessage({ message: parts });
             const responseText = result.text;
             
@@ -250,8 +300,14 @@ export const sendGeneralAiMessage = async (
 
             return { text: responseText, code: codeData };
         }
-    } catch (error) {
+    } catch (error: any) {
         console.error("Erro no chat IA:", error);
-        return { text: "Desculpe, ocorreu um erro ao processar sua solicitação." };
+        
+        // Handle explicit API Key missing error from SDK
+        if (error.message && error.message.includes('API key')) {
+             return { text: "⚠️ Erro de Configuração: Sua chave de API do Google parece inválida ou vazia. Verifique suas variáveis de ambiente." };
+        }
+
+        return { text: "Desculpe, ocorreu um erro na comunicação com a IA. Tente novamente mais tarde." };
     }
 };
