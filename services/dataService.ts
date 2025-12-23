@@ -1,167 +1,231 @@
-// This file serves as an abstraction layer for data access.
-// Currently it returns mock data. To integrate Supabase:
-// 1. Install @supabase/supabase-js
-// 2. Initialize the client here
-// 3. Replace these functions with supabase calls (e.g., supabase.from('tasks').select('*'))
+import { supabase } from './supabaseClient';
+import { Task, User, Team, TaskGroup, Column, RoutineTask, Notification, Subtask, Attachment, Comment } from '../types';
 
-import { Task, User, Team, TaskGroup, Column, RoutineTask, Notification } from '../types';
+// --- Mappers (Snake_case DB -> CamelCase Frontend) ---
 
-export const INITIAL_USERS: User[] = [
-  { 
-    id: '1', 
-    name: 'Juliano Patrick', 
-    role: 'Gerente de Produto', 
-    team: 't1', 
-    email: 'juliano@jp.com', 
-    avatar: '',
-    coverImage: 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&q=80&w=1000',
-    skills: ['Gestão Ágil', 'Product Discovery', 'React', 'UX Design'],
-    portfolio: 'https://github.com/julianopatrick',
-    bio: 'Apaixonado por criar produtos que resolvem problemas reais. Focado em eficiência e experiência do usuário.'
+const mapUser = (u: any): User => ({
+  id: u.id,
+  name: u.name || u.email?.split('@')[0] || 'Sem Nome',
+  role: u.role || 'Membro',
+  email: u.email,
+  avatar: u.avatar,
+  coverImage: u.cover_image,
+  team: 't1', // Simplificado para este exemplo
+  skills: u.skills || [],
+  portfolio: u.portfolio,
+  bio: u.bio
+});
+
+const mapTask = (t: any): Task => ({
+  id: t.id,
+  groupId: t.group_id,
+  title: t.title,
+  description: t.description || '',
+  status: t.status,
+  priority: t.priority,
+  assigneeId: t.assignee_id,
+  supportIds: t.support_ids || [],
+  startDate: t.start_date,
+  dueDate: t.due_date,
+  tags: t.tags || [],
+  progress: t.progress || 0,
+  createdAt: t.created_at,
+  teamId: t.team_id,
+  approvalStatus: t.approval_status || 'none',
+  approverId: t.approver_id,
+  // Nested relations from Supabase
+  subtasks: (t.subtasks || []).map((s: any) => ({
+    id: s.id,
+    title: s.title,
+    completed: s.completed,
+    assigneeId: s.assignee_id,
+    dueDate: s.due_date,
+    startDate: s.start_date
+  })),
+  attachments: (t.attachments || []).map((a: any) => ({
+    id: a.id,
+    name: a.name,
+    url: a.url,
+    type: a.type,
+    createdAt: a.created_at
+  })),
+  comments: (t.comments || []).map((c: any) => ({
+    id: c.id,
+    userId: c.user_id,
+    text: c.text,
+    createdAt: c.created_at
+  }))
+});
+
+// --- API Methods ---
+
+export const api = {
+  // --- LOAD INITIAL DATA ---
+  fetchProjectData: async (teamId: string) => {
+    try {
+      // 1. Users
+      const { data: usersData } = await supabase.from('profiles').select('*');
+      
+      // 2. Teams
+      const { data: teamsData } = await supabase.from('teams').select('*');
+      
+      // 3. Groups
+      const { data: groupsData } = await supabase.from('task_groups').select('*').eq('team_id', teamId);
+      
+      // 4. Columns
+      const { data: columnsData } = await supabase.from('columns').select('*');
+
+      // 5. Tasks (Deep Select)
+      const { data: tasksData, error: taskError } = await supabase
+        .from('tasks')
+        .select(`
+          *,
+          subtasks (*),
+          attachments (*),
+          comments (*)
+        `)
+        .eq('team_id', teamId);
+
+      if (taskError) console.error("Error fetching tasks:", taskError);
+
+      // 6. Routines
+      const { data: routinesData } = await supabase.from('routines').select('*').eq('team_id', teamId);
+
+      // 7. Notifications (Mocked or real)
+      const { data: notificationsData } = await supabase.from('notifications').select('*').order('created_at', { ascending: false });
+
+      return {
+        users: usersData ? usersData.map(mapUser) : [],
+        teams: teamsData ? teamsData.map((t:any) => ({ id: t.id, name: t.name, description: t.description, members: [], inviteCode: t.invite_code })) : [],
+        groups: groupsData ? groupsData.map((g:any) => ({ id: g.id, title: g.title, color: g.color, teamId: g.team_id })) : [],
+        columns: columnsData ? columnsData.map((c:any) => ({ id: c.id, title: c.title, color: c.color })) : [],
+        tasks: tasksData ? tasksData.map(mapTask) : [],
+        routines: routinesData ? routinesData.map((r:any) => ({ ...r, teamId: r.team_id, assigneeId: r.assignee_id, daysOfWeek: r.days_of_week, lastCompletedDate: r.last_completed_date })) : [],
+        notifications: notificationsData ? notificationsData.map((n:any) => ({ ...n, userId: n.user_id, taskId: n.task_id })) : []
+      };
+
+    } catch (e) {
+      console.error("Critical error fetching data:", e);
+      return null;
+    }
   },
-  { id: '2', name: 'Carlos Souza', role: 'Dev Senior', team: 't1', email: 'carlos@time.com', skills: ['Node.js', 'AWS', 'TypeScript'] },
-  { id: '3', name: 'Beatriz Costa', role: 'Designer', team: 't1', email: 'bia@time.com', skills: ['Figma', 'UI/UX', 'Branding'] },
-  { id: '4', name: 'Fernanda Lima', role: 'QA', team: 't1', email: 'fernanda@time.com', skills: ['Cypress', 'Jest'] },
-];
 
-export const INITIAL_TEAMS: Team[] = [
-  { id: 't1', name: 'Time de Produto', description: 'Focado no JP Projects', members: ['1', '2', '3', '4'] },
-  { id: 't2', name: 'Time de Marketing', description: 'Campanhas e Lançamento', members: ['1'] }
-];
+  // --- TASKS CRUD ---
+  createTask: async (task: Task) => {
+    // Flatten Task object to DB snake_case structure
+    const dbTask = {
+      id: task.id,
+      team_id: task.teamId,
+      group_id: task.groupId,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      priority: task.priority,
+      assignee_id: task.assigneeId,
+      start_date: task.startDate,
+      due_date: task.dueDate,
+      tags: task.tags,
+      support_ids: task.supportIds,
+      progress: task.progress,
+      approval_status: task.approvalStatus,
+      approver_id: task.approverId
+    };
 
-export const INITIAL_GROUPS: TaskGroup[] = [
-  { id: 'g1', title: 'Planejamento', color: '#579bfc', teamId: 't1' },
-  { id: 'g2', title: 'Execução', color: '#fdab3d', teamId: 't1' },
-  { id: 'g3', title: 'Lançamento', color: '#00c875', teamId: 't1' }
-];
-
-export const INITIAL_COLUMNS: Column[] = [
-  { id: 'A Fazer', title: 'A Fazer', color: 'bg-gray-100' },
-  { id: 'Em Progresso', title: 'Em Progresso', color: 'bg-blue-50' },
-  { id: 'Revisão', title: 'Revisão', color: 'bg-yellow-50' },
-  { id: 'Concluído', title: 'Concluído', color: 'bg-green-50' },
-];
-
-export const INITIAL_TASKS: Task[] = [
-  {
-    id: 't1',
-    groupId: 'g1',
-    title: 'Definir MVP do Projeto',
-    description: 'Precisamos alinhar o escopo inicial com os stakeholders.',
-    status: 'Concluído',
-    priority: 'Alta',
-    assigneeId: '1',
-    supportIds: ['3'],
-    startDate: '2023-10-25',
-    dueDate: '2023-11-01',
-    tags: ['Planejamento'],
-    subtasks: [{ id: 's1', title: 'Reunião com diretoria', completed: true, assigneeId: '1', dueDate: '2023-10-26' }],
-    progress: 100,
-    attachments: [],
-    comments: [],
-    createdAt: new Date().toISOString(),
-    teamId: 't1',
-    approvalStatus: 'approved',
-    approverId: '1'
+    const { error } = await supabase.from('tasks').insert(dbTask);
+    if (error) console.error("Create task error:", error);
+    return !error;
   },
-  {
-    id: 't2',
-    groupId: 'g2',
-    title: 'Criar Protótipos de Alta Fidelidade',
-    description: 'Desenvolver as telas principais do fluxo.',
-    status: 'Em Progresso',
-    priority: 'Alta',
-    assigneeId: '3',
-    supportIds: ['1', '2'],
-    startDate: '2023-11-02',
-    dueDate: '2023-11-15',
-    tags: ['Design', 'UX'],
-    subtasks: [
-        { id: 's2', title: 'Tela de Login', completed: true, assigneeId: '3', dueDate: '2023-11-05' },
-        { id: 's3', title: 'Dashboard', completed: false, assigneeId: '3', dueDate: '2023-11-10' }
-    ],
-    progress: 50,
-    attachments: [],
-    comments: [],
-    createdAt: new Date().toISOString(),
-    teamId: 't1',
-    approvalStatus: 'none'
+
+  updateTask: async (task: Task) => {
+    const dbTask = {
+      group_id: task.groupId,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      priority: task.priority,
+      assignee_id: task.assigneeId,
+      start_date: task.startDate,
+      due_date: task.dueDate,
+      tags: task.tags,
+      support_ids: task.supportIds,
+      progress: task.progress,
+      approval_status: task.approvalStatus,
+      approver_id: task.approverId
+    };
+
+    const { error } = await supabase.from('tasks').update(dbTask).eq('id', task.id);
+    
+    // Handle Nested Updates (Subtasks, Attachments, Comments) 
+    // Note: For a real production app, handle these via separate API endpoints or specialized logic.
+    // For this prototype, we'll assume the frontend state is authoritative for rapid UI, 
+    // but specific subtask edits should ideally call specific endpoints.
+
+    // Example: Upsert subtasks
+    if (task.subtasks.length > 0) {
+        const subtasksDb = task.subtasks.map(s => ({
+            id: s.id,
+            task_id: task.id,
+            title: s.title,
+            completed: s.completed,
+            assignee_id: s.assigneeId,
+            start_date: s.startDate,
+            due_date: s.dueDate
+        }));
+        await supabase.from('subtasks').upsert(subtasksDb);
+    }
+
+    if (task.comments.length > 0) {
+        // Only insert new ones usually, but here upsert
+        const commentsDb = task.comments.map(c => ({
+            id: c.id,
+            task_id: task.id,
+            user_id: c.userId,
+            text: c.text,
+            created_at: c.createdAt
+        }));
+        await supabase.from('comments').upsert(commentsDb);
+    }
+    
+    if (error) console.error("Update task error:", error);
+    return !error;
   },
-  {
-    id: 't3',
-    groupId: 'g2',
-    title: 'Configurar Ambiente de Dev',
-    description: 'Setup inicial do repositório.',
-    status: 'A Fazer',
-    priority: 'Média',
-    assigneeId: '2',
-    supportIds: [],
-    startDate: '2023-11-05',
-    dueDate: '2023-11-10',
-    tags: ['DevOps'],
-    subtasks: [],
-    progress: 0,
-    attachments: [],
-    comments: [],
-    createdAt: new Date().toISOString(),
-    teamId: 't1',
-    approvalStatus: 'pending',
-    approverId: '1'
+
+  deleteTask: async (taskId: string) => {
+    const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+    return !error;
+  },
+
+  // --- ROUTINES CRUD ---
+  createRoutine: async (routine: RoutineTask) => {
+    const dbRoutine = {
+        id: routine.id,
+        team_id: routine.teamId,
+        title: routine.title,
+        description: routine.description,
+        assignee_id: routine.assigneeId,
+        frequency: routine.frequency,
+        days_of_week: routine.daysOfWeek,
+        time: routine.time
+    };
+    const { error } = await supabase.from('routines').insert(dbRoutine);
+    return !error;
+  },
+
+  updateRoutine: async (routineId: string, updates: Partial<RoutineTask>) => {
+      const dbUpdates: any = {};
+      if(updates.lastCompletedDate) dbUpdates.last_completed_date = updates.lastCompletedDate;
+      // ... map other fields if necessary
+      
+      const { error } = await supabase.from('routines').update(dbUpdates).eq('id', routineId);
+      return !error;
   }
-];
+};
 
-export const INITIAL_ROUTINES: RoutineTask[] = [
-    {
-        id: 'r1',
-        title: 'Daily Standup',
-        description: 'Reunião diária de alinhamento com o time.',
-        teamId: 't1',
-        assigneeId: '1',
-        frequency: 'daily',
-        time: '09:00',
-        daysOfWeek: [1, 2, 3, 4, 5] // Seg-Sex
-    },
-    {
-        id: 'r2',
-        title: 'Deploy em Staging',
-        description: 'Atualizar ambiente de testes.',
-        teamId: 't1',
-        assigneeId: '2',
-        frequency: 'weekly',
-        time: '17:00',
-        daysOfWeek: [5] // Sexta
-    },
-    {
-        id: 'r3',
-        title: 'Code Review Geral',
-        description: 'Limpar PRs pendentes.',
-        teamId: 't1',
-        assigneeId: '2',
-        frequency: 'weekly',
-        time: '14:00',
-        daysOfWeek: [3, 5] // Quarta e Sexta
-    }
-];
-
-export const INITIAL_NOTIFICATIONS: Notification[] = [
-    {
-        id: 'n1',
-        userId: '1',
-        type: 'approval',
-        title: 'Aprovação Pendente',
-        message: 'Carlos solicitou aprovação para "Configurar Ambiente de Dev"',
-        read: false,
-        timestamp: new Date().toISOString(),
-        taskId: 't3'
-    },
-    {
-        id: 'n2',
-        userId: '1',
-        type: 'info',
-        title: 'Nova Tarefa Atribuída',
-        message: 'Você foi alocado em "Definir MVP do Projeto"',
-        read: true,
-        timestamp: new Date(Date.now() - 86400000).toISOString(),
-        taskId: 't1'
-    }
-];
+// Initial Constants as Empty Placeholders to satisfy TS before load
+export const INITIAL_USERS: User[] = [];
+export const INITIAL_TEAMS: Team[] = [];
+export const INITIAL_GROUPS: TaskGroup[] = [];
+export const INITIAL_TASKS: Task[] = [];
+export const INITIAL_COLUMNS: Column[] = [];
+export const INITIAL_ROUTINES: RoutineTask[] = [];
+export const INITIAL_NOTIFICATIONS: Notification[] = [];

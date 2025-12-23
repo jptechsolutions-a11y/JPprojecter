@@ -19,7 +19,8 @@ export interface Team {
   id: string;
   name: string;
   description: string;
-  members: string[]; 
+  members: string[];
+  inviteCode?: string; // New field for team code
 }
 
 export interface TaskGroup {
