@@ -10,7 +10,7 @@ const mapUser = (u: any): User => ({
   email: u.email,
   avatar: u.avatar,
   coverImage: u.cover_image,
-  team: 't1', // Simplificado para este exemplo
+  team: 't1', // Simplificado
   skills: u.skills || [],
   portfolio: u.portfolio,
   bio: u.bio
@@ -61,13 +61,47 @@ const mapTask = (t: any): Task => ({
 
 export const api = {
   // --- LOAD INITIAL DATA ---
-  fetchProjectData: async (teamId: string) => {
+  fetchProjectData: async (requestedTeamId: string | null) => {
     try {
-      // 1. Users
-      const { data: usersData } = await supabase.from('profiles').select('*');
+      // 1. Fetch Teams FIRST to ensure we have a valid UUID context
+      const { data: teamsData, error: teamsError } = await supabase.from('teams').select('*');
       
-      // 2. Teams
-      const { data: teamsData } = await supabase.from('teams').select('*');
+      if (teamsError) {
+          console.error("Error fetching teams:", teamsError);
+          return null;
+      }
+
+      const teams = teamsData ? teamsData.map((t:any) => ({ 
+          id: t.id, 
+          name: t.name, 
+          description: t.description, 
+          members: [], 
+          inviteCode: t.invite_code 
+      })) : [];
+
+      if (teams.length === 0) {
+          // No teams exist, return empty structure to init app safely
+          return {
+              users: [],
+              teams: [],
+              groups: [],
+              columns: [],
+              tasks: [],
+              routines: [],
+              notifications: []
+          };
+      }
+
+      // Determine valid Team ID (Handle 't1' mock ID or null)
+      let teamId = requestedTeamId;
+      const teamExists = teams.find(t => t.id === teamId);
+      
+      if (!teamId || !teamExists) {
+          teamId = teams[0].id;
+      }
+
+      // 2. Users
+      const { data: usersData } = await supabase.from('profiles').select('*');
       
       // 3. Groups
       const { data: groupsData } = await supabase.from('task_groups').select('*').eq('team_id', teamId);
@@ -86,7 +120,9 @@ export const api = {
         `)
         .eq('team_id', teamId);
 
-      if (taskError) console.error("Error fetching tasks:", taskError);
+      if (taskError) {
+          console.error("Error fetching tasks details:", JSON.stringify(taskError, null, 2));
+      }
 
       // 6. Routines
       const { data: routinesData } = await supabase.from('routines').select('*').eq('team_id', teamId);
@@ -96,7 +132,7 @@ export const api = {
 
       return {
         users: usersData ? usersData.map(mapUser) : [],
-        teams: teamsData ? teamsData.map((t:any) => ({ id: t.id, name: t.name, description: t.description, members: [], inviteCode: t.invite_code })) : [],
+        teams: teams,
         groups: groupsData ? groupsData.map((g:any) => ({ id: g.id, title: g.title, color: g.color, teamId: g.team_id })) : [],
         columns: columnsData ? columnsData.map((c:any) => ({ id: c.id, title: c.title, color: c.color })) : [],
         tasks: tasksData ? tasksData.map(mapTask) : [],

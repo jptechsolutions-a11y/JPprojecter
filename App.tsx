@@ -12,7 +12,8 @@ import { AIAssistantView } from './components/AIAssistantView';
 import { MeetingRoomView } from './components/MeetingRoomView';
 import { TeamView } from './components/TeamView';
 import { Task, User, Column, Status, Team, TaskGroup, RoutineTask, Notification } from './types';
-import { api } from './services/dataService'; // Use the new API service
+import { api } from './services/dataService'; 
+import { supabase } from './services/supabaseClient'; // Import Supabase Client
 
 // Components
 const SidebarItem = ({ icon: Icon, label, active, onClick, collapsed }: any) => (
@@ -84,8 +85,8 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true); 
   
-  // Data State - Initialized as empty
-  const [currentTeamId, setCurrentTeamId] = useState<string>('t1'); // Assuming 't1' exists or we load it
+  // Data State - Initialized as null/empty
+  const [currentTeamId, setCurrentTeamId] = useState<string | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -113,11 +114,29 @@ export default function App() {
   const currentTeam = teams.find(t => t.id === currentTeamId) || (teams.length > 0 ? teams[0] : { id: 'loading', name: 'Carregando...', description: '', members: [] });
   const currentGroups = taskGroups.filter(g => g.teamId === currentTeamId);
 
+  // --- Session Check & Data Loading ---
+  useEffect(() => {
+    // 1. Check active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsAuthenticated(!!session);
+    });
+
+    // 2. Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   // Load Data Effect
   useEffect(() => {
     if (isAuthenticated) {
       const loadData = async () => {
         setIsLoadingData(true);
+        // dataService handles logic if currentTeamId is null (fetches first team)
         const data = await api.fetchProjectData(currentTeamId);
         if (data) {
           setUsers(data.users);
@@ -128,15 +147,44 @@ export default function App() {
           setRoutines(data.routines);
           setNotifications(data.notifications);
           
-          // Set current user (mocked to first user for now, in real auth use auth user id)
-          if(data.users.length > 0) setCurrentUser(data.users[0]);
-          if(data.teams.length > 0) setCurrentTeamId(data.teams[0].id);
+          // Set current user based on Auth Session
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session && session.user) {
+             // Find user in fetched profiles, or mock if not found (for safety)
+             const foundUser = data.users.find((u: User) => u.email === session.user.email);
+             if (foundUser) {
+                 setCurrentUser(foundUser);
+             } else {
+                 // Fallback if profile trigger didn't run or is slow
+                 setCurrentUser({
+                     id: session.user.id,
+                     name: session.user.user_metadata.name || session.user.email?.split('@')[0] || 'User',
+                     email: session.user.email || '',
+                     role: 'Novo Usuário',
+                     team: 't1'
+                 });
+             }
+          } else if(data.users.length > 0) {
+             // Fallback for dev/mock without real auth
+             setCurrentUser(data.users[0]);
+          }
+          
+          // Ensure we lock onto the actual team ID fetched
+          if(data.teams.length > 0) {
+              const activeTeam = currentTeamId ? data.teams.find((t: Team) => t.id === currentTeamId) : data.teams[0];
+              if (activeTeam) setCurrentTeamId(activeTeam.id);
+          }
         }
         setIsLoadingData(false);
       };
       loadData();
     }
-  }, [isAuthenticated]); // Reload when auth changes. In real app add currentTeamId to deps if switching teams fetches new data.
+  }, [isAuthenticated, currentTeamId]);
+
+  const handleLogout = async () => {
+      await supabase.auth.signOut();
+      setIsAuthenticated(false);
+  };
 
   // Toggle Dark Mode
   useEffect(() => {
@@ -247,7 +295,7 @@ export default function App() {
       attachments: [],
       comments: [],
       createdAt: new Date().toISOString(),
-      teamId: currentTeamId,
+      teamId: currentTeamId || '',
       approvalStatus: 'none'
     };
     
@@ -539,7 +587,7 @@ export default function App() {
            </button>
            
            <button 
-             onClick={() => setIsAuthenticated(false)}
+             onClick={handleLogout}
              className="w-full flex items-center justify-center p-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
              title="Sair"
            >

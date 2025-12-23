@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Box, UserPlus, LogIn, KeyRound, ArrowLeft } from 'lucide-react';
+import { Box, UserPlus, LogIn, KeyRound, ArrowLeft, Loader2 } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
 
 interface LoginViewProps {
   onLogin: () => void;
@@ -13,29 +14,52 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [name, setName] = useState(''); // For register
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setErrorMsg('');
 
     try {
         if (mode === 'login') {
-            // TODO: supabase.auth.signInWithPassword({ email, password })
-            console.log("Supabase Login:", email);
-            setTimeout(() => onLogin(), 1000); // Mock delay
+            const { error } = await supabase.auth.signInWithPassword({ 
+              email, 
+              password 
+            });
+
+            if (error) throw error;
+            
+            // O App.tsx vai detectar a mudança de sessão, mas chamamos onLogin para garantir
+            onLogin();
+
         } else if (mode === 'register') {
-            // TODO: supabase.auth.signUp({ email, password, options: { data: { name } } })
-            console.log("Supabase Register:", { email, name });
-            alert("Conta criada com sucesso! Faça login.");
+            const { error } = await supabase.auth.signUp({ 
+              email, 
+              password, 
+              options: { 
+                data: { name: name } // Salva o nome nos metadados do usuário
+              } 
+            });
+
+            if (error) throw error;
+
+            alert("Conta criada com sucesso! Verifique seu email se necessário ou faça login.");
             setMode('login');
+
         } else if (mode === 'recover') {
-            // TODO: supabase.auth.resetPasswordForEmail(email)
-            console.log("Supabase Recover:", email);
-            alert("Email de recuperação enviado!");
+            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+              redirectTo: window.location.origin,
+            });
+
+            if (error) throw error;
+
+            alert("Email de recuperação enviado! Verifique sua caixa de entrada.");
             setMode('login');
         }
-    } catch (error) {
-        console.error("Auth error", error);
+    } catch (error: any) {
+        console.error("Auth error:", error);
+        setErrorMsg(error.message || "Ocorreu um erro. Tente novamente.");
     } finally {
         setIsLoading(false);
     }
@@ -61,6 +85,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
             </div>
 
             <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
+                {errorMsg && (
+                    <div className="p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg text-center animate-fade-in">
+                        {errorMsg}
+                    </div>
+                )}
+
                 {mode === 'register' && (
                     <div className="animate-fade-in-up">
                         <input 
@@ -103,7 +133,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                     disabled={isLoading}
                     className="w-full text-white bg-gradient-to-r from-[#00b4d8] to-[#0096c7] hover:from-[#0096c7] hover:to-[#023e8a] focus:ring-4 focus:ring-blue-300 font-bold rounded-lg text-sm px-5 py-3 text-center transition-all transform hover:scale-[1.02] shadow-lg disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                    {isLoading ? 'Processando...' : mode === 'login' ? 'ENTRAR' : mode === 'register' ? 'CRIAR CONTA' : 'ENVIAR LINK'}
+                    {isLoading ? <Loader2 size={18} className="animate-spin" /> : mode === 'login' ? 'ENTRAR' : mode === 'register' ? 'CRIAR CONTA' : 'ENVIAR LINK'}
                 </button>
 
                 <div className="flex flex-col gap-3 mt-6 text-center text-sm">
