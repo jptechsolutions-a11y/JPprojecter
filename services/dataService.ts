@@ -290,6 +290,17 @@ export const api = {
       return !error;
   },
 
+  createTaskGroup: async (teamId: string, title: string, color: string) => {
+      const { data, error } = await supabase.from('task_groups').insert({
+          team_id: teamId,
+          title: title,
+          color: color
+      }).select().single();
+      
+      if(error) console.error("Error creating group:", error);
+      return data ? { id: data.id, title: data.title, color: data.color, teamId: data.team_id } : null;
+  },
+
   // --- TASKS CRUD ---
   createTask: async (task: Task) => {
     // Flatten Task object to DB snake_case structure

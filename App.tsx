@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Sparkles, Repeat, Sun, Moon, Image as ImageIcon, Briefcase, Link as LinkIcon, X, Filter, Save, Bell, Info, ShieldAlert, CheckCircle, Video } from 'lucide-react';
+import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Sparkles, Repeat, Sun, Moon, Image as ImageIcon, Briefcase, Link as LinkIcon, X, Filter, Save, Bell, Info, ShieldAlert, CheckCircle, Video, FolderPlus } from 'lucide-react';
 import { Avatar } from './components/Avatar';
 import { Modal } from './components/Modal';
 import { TaskDetail } from './components/TaskDetail';
@@ -12,27 +12,29 @@ import { RoutineTasksView } from './components/RoutineTasksView';
 import { AIAssistantView } from './components/AIAssistantView';
 import { MeetingRoomView } from './components/MeetingRoomView';
 import { TeamView } from './components/TeamView';
+import { ProfileView } from './components/ProfileView'; // Import New Profile
 import { Task, User, Column, Status, Team, TaskGroup, RoutineTask, Notification } from './types';
 import { api } from './services/dataService'; 
 import { supabase } from './services/supabaseClient';
 
 // Components
+// SMALLER ICONS AND PADDING
 const SidebarItem = ({ icon: Icon, label, active, onClick, collapsed }: any) => (
   <button
     onClick={onClick}
     title={collapsed ? label : ''}
-    className={`w-full flex items-center ${collapsed ? 'justify-center px-2' : 'gap-3 px-4'} py-3 rounded-lg transition-all mb-1 ${
+    className={`w-full flex items-center ${collapsed ? 'justify-center px-2' : 'gap-3 px-4'} py-2 rounded-lg transition-all mb-1 ${
       active 
         ? 'bg-[#00b4d8] text-white shadow-md' 
         : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200'
     }`}
   >
-    <Icon size={18} className="flex-shrink-0" />
-    {!collapsed && <span className="font-medium whitespace-nowrap overflow-hidden text-ellipsis text-sm">{label}</span>}
+    <Icon size={15} className="flex-shrink-0" />
+    {!collapsed && <span className="font-medium whitespace-nowrap overflow-hidden text-ellipsis text-xs">{label}</span>}
   </button>
 );
 
-const TaskCard: React.FC<{ task: Task; user?: User; onClick: () => void }> = ({ task, user, onClick }) => {
+const TaskCard: React.FC<{ task: Task; user?: User; onClick: () => void; onDragStart: (e: React.DragEvent, task: Task) => void }> = ({ task, user, onClick, onDragStart }) => {
   const priorityColors = {
     'Baixa': 'bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-200 border-teal-200 dark:border-teal-800',
     'Média': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-200 border-yellow-200 dark:border-yellow-800',
@@ -43,8 +45,10 @@ const TaskCard: React.FC<{ task: Task; user?: User; onClick: () => void }> = ({ 
 
   return (
     <div 
+      draggable
+      onDragStart={(e) => onDragStart(e, task)}
       onClick={onClick}
-      className="bg-white dark:bg-[#1e293b] p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all cursor-pointer group"
+      className="bg-white dark:bg-[#1e293b] p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group"
     >
       <div className="flex justify-between items-start mb-3">
         <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${priorityColors[task.priority]}`}>
@@ -52,7 +56,7 @@ const TaskCard: React.FC<{ task: Task; user?: User; onClick: () => void }> = ({ 
         </span>
         {user && <Avatar src={user.avatar} alt={user.name} size="sm" />}
       </div>
-      <h3 className="text-gray-800 dark:text-gray-100 font-semibold mb-3 leading-tight group-hover:text-[#00b4d8] transition-colors">
+      <h3 className="text-gray-800 dark:text-gray-100 font-semibold mb-3 leading-tight group-hover:text-[#00b4d8] transition-colors text-sm">
         {task.title}
       </h3>
       
@@ -98,6 +102,7 @@ export default function App() {
   
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
+  const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false); // Modal for New Project (Group)
   const [preSelectedGroupId, setPreSelectedGroupId] = useState<string | null>(null);
   const [isTeamSelectorOpen, setIsTeamSelectorOpen] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -294,28 +299,85 @@ export default function App() {
     await api.createTask(newTask);
   };
 
+  // --- Project (Group) Create ---
+  const handleCreateProject = async (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      if(!currentTeamId) return;
+      const formData = new FormData(e.currentTarget);
+      const title = formData.get('title') as string;
+      const color = formData.get('color') as string;
+
+      const newGroup = await api.createTaskGroup(currentTeamId, title, color);
+      if(newGroup) {
+          setTaskGroups([...taskGroups, {id: newGroup.id, title: newGroup.title, color: newGroup.color, teamId: newGroup.teamId}]);
+          setIsNewProjectModalOpen(false);
+          addNotification('Projeto Criado', `Projeto "${title}" criado com sucesso.`, 'success');
+      }
+  };
+
+  // --- Kanban Drag & Drop ---
+  const handleDragStart = (e: React.DragEvent, task: Task) => {
+      e.dataTransfer.setData('taskId', task.id);
+      e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+      e.preventDefault(); // Necessary to allow dropping
+      e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent, statusId: string) => {
+      e.preventDefault();
+      const taskId = e.dataTransfer.getData('taskId');
+      const task = tasks.find(t => t.id === taskId);
+      
+      if(task && task.status !== statusId) {
+          // Optimistic update
+          const updatedTask = { ...task, status: statusId };
+          setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
+          
+          // API Call
+          api.updateTask(updatedTask);
+          
+          // Optional: Add notification toast
+          // addNotification('Tarefa Movida', `${task.title} movida para ${statusId}`, 'info');
+      }
+  };
+
+
   // --- Views ---
   const renderBoard = () => (
     <div className="flex h-full gap-6 overflow-x-auto pb-4 items-start snap-x">
       {columns.map(column => {
         const columnTasks = filteredTasks.filter(t => t.status === column.id);
         return (
-          <div key={column.id} className="min-w-[300px] w-[300px] flex flex-col snap-center shrink-0">
+          <div 
+            key={column.id} 
+            className="min-w-[300px] w-[300px] flex flex-col snap-center shrink-0"
+            onDragOver={handleDragOver}
+            onDrop={(e) => handleDrop(e, column.id)}
+          >
             <div className={`flex items-center justify-between p-3 rounded-t-xl ${column.color} dark:bg-[#1e293b] border-b-2 border-[#00b4d8]`}>
               <h3 className="font-bold text-gray-700 dark:text-gray-200 text-sm">{column.title}</h3>
               <span className="bg-white/50 dark:bg-black/30 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded text-xs font-bold">
                 {columnTasks.length}
               </span>
             </div>
-            <div className={`p-3 space-y-3 bg-gray-50 dark:bg-[#0f172a] border-x border-b border-gray-200 dark:border-gray-700 rounded-b-xl h-full min-h-[150px]`}>
+            <div className={`p-3 space-y-3 bg-gray-50 dark:bg-[#0f172a] border-x border-b border-gray-200 dark:border-gray-700 rounded-b-xl h-full min-h-[150px] transition-colors ${columnTasks.length === 0 ? 'opacity-80' : ''}`}>
               {columnTasks.map(task => (
                 <TaskCard 
                   key={task.id} 
                   task={task} 
                   user={users.find(u => u.id === task.assigneeId)}
                   onClick={() => setSelectedTask(task)} 
+                  onDragStart={handleDragStart}
                 />
               ))}
+              {columnTasks.length === 0 && (
+                  <div className="h-full flex items-center justify-center text-gray-400 text-xs py-10 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-lg">
+                      Arraste itens aqui
+                  </div>
+              )}
             </div>
           </div>
         );
@@ -350,7 +412,7 @@ export default function App() {
   return (
     <div className={`flex h-screen bg-gray-50 dark:bg-[#0f172a] text-gray-900 dark:text-gray-100`}>
       <aside 
-        className={`${isSidebarCollapsed ? 'w-20' : 'w-64'} bg-white dark:bg-[#1e293b] border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 ease-in-out relative shadow-sm z-30`}
+        className={`${isSidebarCollapsed ? 'w-16' : 'w-56'} bg-white dark:bg-[#1e293b] border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 ease-in-out relative shadow-sm z-30`}
       >
         <button 
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -359,28 +421,28 @@ export default function App() {
             {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
 
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 relative h-20 flex items-center justify-center">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 relative h-16 flex items-center justify-center">
           <button 
             onClick={() => setIsTeamSelectorOpen(!isTeamSelectorOpen)}
-            className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'} p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors`}
+            className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'} p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors`}
           >
-             <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-[#00b4d8] rounded-lg flex-shrink-0 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+             <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-[#00b4d8] rounded-lg flex-shrink-0 flex items-center justify-center text-white font-bold text-xs shadow-sm">
                   {currentTeam?.name.substring(0, 2).toUpperCase() || 'JP'}
                 </div>
                 {!isSidebarCollapsed && (
                     <div className="text-left overflow-hidden">
-                        <span className="block text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase whitespace-nowrap">Time Atual</span>
-                        <span className="block text-sm font-bold text-gray-800 dark:text-white truncate w-32">{currentTeam?.name || 'Selecione'}</span>
+                        <span className="block text-[10px] text-gray-500 dark:text-gray-400 font-semibold uppercase whitespace-nowrap">Time</span>
+                        <span className="block text-xs font-bold text-gray-800 dark:text-white truncate w-24">{currentTeam?.name || 'Selecione'}</span>
                     </div>
                 )}
              </div>
-             {!isSidebarCollapsed && <ChevronDown size={16} className="text-gray-500" />}
+             {!isSidebarCollapsed && <ChevronDown size={14} className="text-gray-500" />}
           </button>
         </div>
         
-        {/* Navigation Items (Same as before) */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-hidden">
+        {/* Navigation Items */}
+        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-hidden">
           <SidebarItem icon={List} label="Projetos (Lista)" active={activeView === 'list'} onClick={() => setActiveView('list')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Columns} label="Quadro Kanban" active={activeView === 'board'} onClick={() => setActiveView('board')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={CalendarRange} label="Cronograma" active={activeView === 'gantt'} onClick={() => setActiveView('gantt')} collapsed={isSidebarCollapsed} />
@@ -388,19 +450,31 @@ export default function App() {
           <SidebarItem icon={Video} label="Sala de Reunião" active={activeView === 'meeting'} onClick={() => setActiveView('meeting')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={BarChart3} label="Indicadores" active={activeView === 'dashboard'} onClick={() => setActiveView('dashboard')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Sparkles} label="IA Assistant" active={activeView === 'ai'} onClick={() => setActiveView('ai')} collapsed={isSidebarCollapsed} />
+          
           <div className={`pt-4 pb-2 transition-opacity ${isSidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}>
-            <span className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Geral</span>
+            <span className="px-4 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Geral</span>
           </div>
           <SidebarItem icon={Users} label="Membros" active={activeView === 'team'} onClick={() => setActiveView('team')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Settings} label="Meu Perfil" active={activeView === 'profile'} onClick={() => setActiveView('profile')} collapsed={isSidebarCollapsed} />
+          
+           {/* Add Project Button */}
+           <div className="mt-4 px-2">
+               <button 
+                  onClick={() => setIsNewProjectModalOpen(true)}
+                  className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-start gap-2'} border border-dashed border-gray-400 text-gray-500 hover:text-indigo-500 hover:border-indigo-500 p-2 rounded-lg transition-colors text-xs font-bold`}
+               >
+                   <FolderPlus size={16} />
+                   {!isSidebarCollapsed && "Novo Projeto"}
+               </button>
+           </div>
         </nav>
 
         <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
            <button onClick={() => setIsDarkMode(!isDarkMode)} className={`w-full flex items-center justify-center p-2 rounded-lg transition-colors ${isDarkMode ? 'bg-yellow-500/10 text-yellow-500' : 'bg-gray-100 text-gray-600'}`}>
-             {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+             {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
            </button>
            <button onClick={handleLogout} className="w-full flex items-center justify-center p-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors">
-             <LogOut size={18} />
+             <LogOut size={16} />
            </button>
         </div>
       </aside>
@@ -451,14 +525,14 @@ export default function App() {
            {activeView === 'gantt' && <GanttView tasks={filteredTasks} users={users} onTaskClick={setSelectedTask} />}
            {activeView === 'dashboard' && <DashboardView tasks={tasks.filter(t => t.teamId === currentTeamId)} users={users} />}
            {activeView === 'routines' && <RoutineTasksView routines={routines} users={users} currentTeamId={currentTeamId || ''} onToggleRoutine={(id) => { const r = routines.find(x => x.id === id); if(r) api.updateRoutine(id, { lastCompletedDate: new Date().toISOString().split('T')[0] }).then(loadData); }} onAddRoutine={async (r) => { await api.createRoutine(r); loadData(); }} />}
-           {activeView === 'profile' && <div>Profile Component Here</div>} 
+           {activeView === 'profile' && currentUser && <ProfileView currentUser={currentUser} />}
            {activeView === 'ai' && <AIAssistantView />}
            {activeView === 'meeting' && currentUser && <MeetingRoomView users={users} currentUser={currentUser} />}
            {activeView === 'team' && currentTeam && <TeamView users={users} currentTeam={currentTeam} />}
         </div>
       </main>
 
-      {/* Task Modals (Simplified for brevity as they are same as before) */}
+      {/* Task Modals */}
       <Modal isOpen={!!selectedTask} onClose={() => setSelectedTask(null)} title="Detalhes da Tarefa">
         {selectedTask && currentUser && <TaskDetail task={selectedTask} users={users} columns={columns} currentUser={currentUser} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} onRequestApproval={handleRequestApproval} />}
       </Modal>
@@ -471,6 +545,31 @@ export default function App() {
             <div><label className="block text-sm font-medium mb-1">Grupo</label><select name="groupId" defaultValue={preSelectedGroupId || ''} className="w-full px-3 py-2 border rounded-lg">{currentGroups.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}</select></div>
           </div>
           <div className="pt-4 flex justify-end gap-3"><button type="button" onClick={() => setIsNewTaskModalOpen(false)} className="px-4 py-2 text-gray-600">Cancelar</button><button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg">Criar</button></div>
+        </form>
+      </Modal>
+
+      {/* New Project Modal */}
+      <Modal isOpen={isNewProjectModalOpen} onClose={() => setIsNewProjectModalOpen(false)} title="Novo Projeto" maxWidth="max-w-md">
+        <form onSubmit={handleCreateProject} className="space-y-4">
+            <div>
+                <label className="block text-sm font-medium mb-1">Nome do Projeto</label>
+                <input name="title" required placeholder="Ex: Campanha de Marketing 2025" className="w-full px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
+            </div>
+            <div>
+                <label className="block text-sm font-medium mb-1">Cor de Identificação</label>
+                <div className="flex gap-2">
+                    {['#00b4d8', '#a25ddc', '#fdab3d', '#ff5c8d', '#48cae4', '#20c997'].map(color => (
+                        <label key={color} className="cursor-pointer">
+                            <input type="radio" name="color" value={color} className="peer sr-only" defaultChecked={color === '#00b4d8'} />
+                            <div className="w-8 h-8 rounded-full peer-checked:ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 peer-checked:scale-110 transition-all" style={{backgroundColor: color}}></div>
+                        </label>
+                    ))}
+                </div>
+            </div>
+            <div className="pt-4 flex justify-end gap-3">
+                <button type="button" onClick={() => setIsNewProjectModalOpen(false)} className="px-4 py-2 text-gray-600 dark:text-gray-400">Cancelar</button>
+                <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg">Criar Projeto</button>
+            </div>
         </form>
       </Modal>
     </div>
