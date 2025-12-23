@@ -21,6 +21,7 @@ export interface Team {
   description: string;
   members: string[];
   inviteCode?: string; // New field for team code
+  avatar?: string; // New field for team logo
 }
 
 export interface TaskGroup {

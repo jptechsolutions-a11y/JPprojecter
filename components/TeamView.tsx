@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { User, Team } from '../types';
 import { Avatar } from './Avatar';
-import { Mail, Copy, RefreshCw, UserPlus, Check, Hash, Link as LinkIcon, Shield, Trash2, MoreVertical, Plus, Send, Edit2 } from 'lucide-react';
+import { Mail, Copy, RefreshCw, UserPlus, Check, Hash, Link as LinkIcon, Shield, Trash2, MoreVertical, Plus, Send, Edit2, Camera } from 'lucide-react';
 import { Modal } from './Modal';
 import { api } from '../services/dataService';
 
@@ -21,6 +21,9 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam }) => {
     // Edit Team State
     const [isEditing, setIsEditing] = useState(false);
     const [teamName, setTeamName] = useState(currentTeam.name);
+    const [teamAvatar, setTeamAvatar] = useState(currentTeam.avatar);
+    
+    const teamLogoRef = useRef<HTMLInputElement>(null);
 
     // Filter users belonging to this team
     const teamMembers = users.filter(u => currentTeam.members.includes(u.id));
@@ -48,42 +51,75 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam }) => {
         }, 1500);
     };
 
+    const handleTeamLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setTeamAvatar(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
     const handleUpdateTeam = async () => {
         if (!teamName.trim()) return;
-        await api.updateTeam(currentTeam.id, { name: teamName });
+        await api.updateTeam(currentTeam.id, { name: teamName, avatar: teamAvatar });
         setIsEditing(false);
-        // We might want to trigger a reload in App, but simple local update for now:
-        currentTeam.name = teamName; 
+        // Simple local update for immediate feedback
+        currentTeam.name = teamName;
+        currentTeam.avatar = teamAvatar;
     };
 
     return (
         <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-[#1b263b] p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
-                <div>
-                    <div className="flex items-center gap-3">
-                        {isEditing ? (
-                            <div className="flex items-center gap-2">
-                                <input 
-                                    value={teamName}
-                                    onChange={(e) => setTeamName(e.target.value)}
-                                    className="text-2xl font-bold bg-white dark:bg-[#0d1b2a] border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-800 dark:text-white"
-                                    autoFocus
-                                />
-                                <button onClick={handleUpdateTeam} className="bg-green-500 text-white p-1 rounded hover:bg-green-600"><Check size={16} /></button>
-                                <button onClick={() => setIsEditing(false)} className="bg-red-500 text-white p-1 rounded hover:bg-red-600"><Trash2 size={16} /></button>
-                            </div>
+                <div className="flex items-center gap-4">
+                    {/* Team Logo */}
+                    <div className="relative group w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                        {teamAvatar ? (
+                            <img src={teamAvatar} alt="Logo" className="w-full h-full object-cover" />
                         ) : (
-                            <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2 group cursor-pointer" onClick={() => setIsEditing(true)}>
-                                {currentTeam.name}
-                                <Edit2 size={16} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            </h2>
+                            <div className="text-xl font-bold text-gray-400">{currentTeam.name.substring(0,2).toUpperCase()}</div>
                         )}
-                        <span className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 px-2 py-1 rounded-full border border-indigo-200 dark:border-indigo-700">
-                            {teamMembers.length} membros
-                        </span>
+                        
+                        {isEditing && (
+                            <div 
+                                className="absolute inset-0 bg-black/50 flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => teamLogoRef.current?.click()}
+                            >
+                                <Camera size={20} className="text-white" />
+                                <input ref={teamLogoRef} type="file" className="hidden" accept="image/*" onChange={handleTeamLogoUpload} />
+                            </div>
+                        )}
                     </div>
-                    <p className="text-gray-500 text-sm mt-1">{currentTeam.description}</p>
+
+                    <div>
+                        <div className="flex items-center gap-3">
+                            {isEditing ? (
+                                <div className="flex items-center gap-2">
+                                    <input 
+                                        value={teamName}
+                                        onChange={(e) => setTeamName(e.target.value)}
+                                        className="text-2xl font-bold bg-white dark:bg-[#0d1b2a] border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-gray-800 dark:text-white"
+                                        autoFocus
+                                    />
+                                    <button onClick={handleUpdateTeam} className="bg-green-500 text-white p-1 rounded hover:bg-green-600"><Check size={16} /></button>
+                                    <button onClick={() => { setIsEditing(false); setTeamName(currentTeam.name); setTeamAvatar(currentTeam.avatar); }} className="bg-red-500 text-white p-1 rounded hover:bg-red-600"><Trash2 size={16} /></button>
+                                </div>
+                            ) : (
+                                <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2 group cursor-pointer" onClick={() => setIsEditing(true)}>
+                                    {currentTeam.name}
+                                    <Edit2 size={16} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                </h2>
+                            )}
+                            <span className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 px-2 py-1 rounded-full border border-indigo-200 dark:border-indigo-700">
+                                {teamMembers.length} membros
+                            </span>
+                        </div>
+                        <p className="text-gray-500 text-sm mt-1">{currentTeam.description}</p>
+                    </div>
                 </div>
                 <button 
                     onClick={() => setIsInviteModalOpen(true)}

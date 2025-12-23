@@ -88,7 +88,8 @@ export const api = {
              name: t.name, 
              description: t.description, 
              members: [], // Will fetch users next
-             inviteCode: t.invite_code 
+             inviteCode: t.invite_code,
+             avatar: t.avatar // Mapped team avatar
         }));
 
       // If user has no teams, return special empty state to trigger Onboarding in App.tsx
@@ -166,6 +167,20 @@ export const api = {
       console.error("Critical error fetching data:", e);
       return null;
     }
+  },
+
+  // --- USER MANAGEMENT ---
+  updateUser: async (userId: string, updates: Partial<User>) => {
+    const dbUpdates: any = {};
+    if (updates.name) dbUpdates.name = updates.name;
+    if (updates.role) dbUpdates.role = updates.role;
+    if (updates.bio) dbUpdates.bio = updates.bio;
+    if (updates.avatar) dbUpdates.avatar = updates.avatar;
+    if (updates.coverImage) dbUpdates.cover_image = updates.coverImage;
+    // Skills would need array handling if implemented in UI
+
+    const { error } = await supabase.from('profiles').update(dbUpdates).eq('id', userId);
+    return !error;
   },
 
   // --- TEAM MANAGEMENT ---
@@ -285,6 +300,7 @@ export const api = {
       const dbUpdates: any = {};
       if (updates.name) dbUpdates.name = updates.name;
       if (updates.description) dbUpdates.description = updates.description;
+      if (updates.avatar) dbUpdates.avatar = updates.avatar;
       
       const { error } = await supabase.from('teams').update(dbUpdates).eq('id', teamId);
       return !error;
