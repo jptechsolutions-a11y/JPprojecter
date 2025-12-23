@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Image as ImageIcon, Code as CodeIcon, Loader2, Paperclip, FileAudio, History, MessageSquare, Plus, Zap, Trash2, Maximize2, Minimize2, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { Send, Bot, User, Image as ImageIcon, Code as CodeIcon, Loader2, Paperclip, FileAudio, History, MessageSquare, Plus, Zap, Trash2, Maximize2, Minimize2, PanelRightClose, PanelRightOpen, ExternalLink, Globe } from 'lucide-react';
 import { sendGeneralAiMessage } from '../services/geminiService';
 import { ChatMessage, ChatHistoryItem, AutomationRule } from '../types';
 import { Modal } from './Modal';
@@ -57,18 +57,15 @@ export const AIAssistantView: React.FC = () => {
         if (history.length === 0) {
             createNewChat();
         } else if (!currentChatId) {
-            // Load most recent chat
             const recent = history[0];
             setCurrentChatId(recent.id);
             setMessages(recent.messages);
         }
     }, []);
 
-    // Save History on Change
+    // Save History on Change (FIXED: Save even if empty)
     useEffect(() => {
-        if (history.length > 0) {
-            localStorage.setItem('jp_chat_history', JSON.stringify(history));
-        }
+        localStorage.setItem('jp_chat_history', JSON.stringify(history));
     }, [history]);
 
     // Save Automations on Change
@@ -98,7 +95,7 @@ export const AIAssistantView: React.FC = () => {
             id: crypto.randomUUID(), 
             role: 'model', 
             type: 'text', 
-            content: 'Olá! Sou seu assistente Full-Stack. Posso gerar imagens, analisar arquivos, escrever código e criar automações.', 
+            content: 'Olá! Sou seu assistente Full-Stack. Posso gerar imagens, analisar arquivos, escrever código e tenho acesso ao Google para informações recentes.', 
             timestamp: new Date() 
         };
         
@@ -120,7 +117,6 @@ export const AIAssistantView: React.FC = () => {
         if(confirm('Excluir esta conversa?')) {
             const newHist = history.filter(h => h.id !== chatId);
             setHistory(newHist);
-            // localStorage saves via useEffect
             if (currentChatId === chatId) {
                 if (newHist.length > 0) loadChat(newHist[0].id);
                 else createNewChat();
@@ -172,7 +168,6 @@ export const AIAssistantView: React.FC = () => {
         setAttachments([]);
         setIsLoading(true);
 
-        // Improved Regex for Image Intent
         const lowerInput = userMsg.content.toLowerCase();
         const isImageGenerationRequest = attachments.length === 0 && (
             /(gerar|criar|fazer|desenhar) (uma )?(imagem|foto|desenho|ilustração|logo|banner)/i.test(lowerInput) ||
@@ -191,6 +186,7 @@ export const AIAssistantView: React.FC = () => {
             imageUrl: response.imageUrl,
             codeLanguage: response.code?.lang,
             codeContent: response.code?.content,
+            sources: response.sources,
             timestamp: new Date()
         };
 
@@ -203,7 +199,6 @@ export const AIAssistantView: React.FC = () => {
             setCanvasContent(response.code.content);
         }
 
-        // Robust History Update
         setHistory(prev => {
             const updated = prev.map(h => {
                 if (h.id === currentChatId) {
@@ -212,7 +207,6 @@ export const AIAssistantView: React.FC = () => {
                 }
                 return h;
             });
-            // If the current chat wasn't found (rare race condition), ensure we return at least the updated version if logic permits
             return updated;
         });
     };
@@ -412,6 +406,29 @@ export const AIAssistantView: React.FC = () => {
 
                                                 {/* Text Content */}
                                                 <div className="text-sm leading-relaxed font-sans">{msg.content}</div>
+                                                
+                                                {/* Search Grounding Sources */}
+                                                {msg.sources && msg.sources.length > 0 && (
+                                                    <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-600/50">
+                                                        <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                                                            <Globe size={12} /> Fontes Consultadas
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {msg.sources.map((source, idx) => (
+                                                                <a 
+                                                                    key={idx} 
+                                                                    href={source.uri} 
+                                                                    target="_blank" 
+                                                                    rel="noopener noreferrer"
+                                                                    className="flex items-center gap-1 bg-white dark:bg-black/20 hover:bg-gray-50 dark:hover:bg-black/40 border border-gray-200 dark:border-gray-600 rounded-full px-2 py-1 text-[10px] text-indigo-600 dark:text-indigo-400 transition-colors truncate max-w-[200px]"
+                                                                >
+                                                                    <ExternalLink size={10} />
+                                                                    <span className="truncate">{source.title}</span>
+                                                                </a>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
 
                                                 {/* Code Actions */}
                                                 {msg.type === 'code' && (
@@ -439,7 +456,7 @@ export const AIAssistantView: React.FC = () => {
                                     </div>
                                     <div className="bg-gray-100 dark:bg-[#1e293b] p-4 rounded-2xl rounded-tl-none border border-gray-200 dark:border-gray-700 flex items-center gap-2">
                                         <Loader2 size={16} className="animate-spin text-gray-400" />
-                                        <span className="text-sm text-gray-500 dark:text-gray-400">Gerando resposta...</span>
+                                        <span className="text-sm text-gray-500 dark:text-gray-400">Pesquisando na web e gerando resposta...</span>
                                     </div>
                                 </div>
                             )}
@@ -505,7 +522,7 @@ export const AIAssistantView: React.FC = () => {
                                                 handleSend();
                                             }
                                         }}
-                                        placeholder="Gere imagens, peça código ou anexe arquivos para revisão..."
+                                        placeholder="Pergunte sobre notícias, imagens ou código..."
                                         className="w-full pl-24 pr-12 py-3 bg-gray-100 dark:bg-[#0f172a] border border-transparent focus:bg-white dark:focus:bg-[#0f172a] focus:ring-2 focus:ring-indigo-500 rounded-xl resize-none outline-none text-gray-900 dark:text-gray-100 transition-all text-sm shadow-inner"
                                         rows={1}
                                         style={{minHeight: '48px', maxHeight: '150px'}}

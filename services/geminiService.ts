@@ -36,6 +36,12 @@ if (apiKey) {
 // --- Helper: Mock Delay ---
 const simulateDelay = (ms = 1000) => new Promise(resolve => setTimeout(resolve, ms));
 
+// --- Helper: Get Current Date Context ---
+const getDateContext = () => {
+    const now = new Date();
+    return `DATA ATUAL: ${now.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}. HORA: ${now.toLocaleTimeString('pt-BR')}.`;
+};
+
 // --- Tool Definitions ---
 const imageGenerationTool: FunctionDeclaration = {
     name: "generate_image",
@@ -202,8 +208,6 @@ export const generateFullProject = async (prompt: string): Promise<{name: string
 const executeImageGeneration = async (prompt: string): Promise<{ text: string, imageUrl?: string }> => {
     if (!ai) return { text: "Erro: IA não inicializada." };
     try {
-        // Correctly using gemini-2.5-flash-image via generateContent
-        // This model supports image output via parts inlineData
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
             contents: {
@@ -221,7 +225,6 @@ const executeImageGeneration = async (prompt: string): Promise<{ text: string, i
 
         if (response.candidates && response.candidates[0].content && response.candidates[0].content.parts) {
             for (const part of response.candidates[0].content.parts) {
-                // IMPORTANT: The image part comes as inlineData in gemini-2.5-flash-image response
                 if (part.inlineData) {
                     const base64EncodeString = part.inlineData.data;
                     imageUrl = `data:${part.inlineData.mimeType};base64,${base64EncodeString}`;
@@ -238,6 +241,15 @@ const executeImageGeneration = async (prompt: string): Promise<{ text: string, i
         }
     } catch (imgError: any) {
         console.error("Erro na geração de imagem (Tool):", imgError);
+        
+        // Handle Rate Limit Specifically
+        if (imgError.message?.includes('429') || imgError.status === 429) {
+            return { 
+                text: "⚠️ **Limite de Cota Atingido**\nO limite gratuito da API Gemini para geração de imagens foi excedido temporariamente. \n\nAbaixo está uma imagem de exemplo (Placeholder) para demonstrar o layout:", 
+                imageUrl: `https://placehold.co/600x600/1e293b/white?text=${encodeURIComponent(prompt.substring(0,20) + '...')}`
+            };
+        }
+
         return { text: `Erro ao gerar imagem: ${imgError.message || 'Erro desconhecido'}` };
     }
 };
@@ -247,12 +259,11 @@ export const sendGeneralAiMessage = async (
     history: any[], 
     isExplicitImageRequest = false, 
     attachments?: {name: string, content: string, mimeType?: string}[]
-): Promise<{text: string, imageUrl?: string, code?: { lang: string, content: string }}> => {
+): Promise<{text: string, imageUrl?: string, code?: { lang: string, content: string }, sources?: { title: string, uri: string }[]}> => {
     
     // --- Mock Response for Demo ---
     if (!ai) {
         await simulateDelay(1500);
-        
         const lowerMsg = message.toLowerCase();
         const mockImageTrigger = isExplicitImageRequest || lowerMsg.includes('desenhe') || lowerMsg.includes('imagem') || lowerMsg.includes('foto');
 
@@ -262,28 +273,16 @@ export const sendGeneralAiMessage = async (
                 imageUrl: "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=1000&auto=format&fit=crop" 
             };
         }
-
-        if (message.toLowerCase().includes("código") || message.toLowerCase().includes("html") || message.toLowerCase().includes("script")) {
-            return {
-                text: "Aqui está um exemplo de código gerado no modo demonstração:",
-                code: {
-                    lang: 'html',
-                    content: '<div class="demo-card">\n  <h2>Código Gerado (Demo)</h2>\n  <p>Adicione uma API Key para IA real.</p>\n  <button>Clique</button>\n</div>'
-                }
-            };
-        }
-        
-        return { text: "Estou operando em Modo Demonstração. Adicione a `VITE_GOOGLE_API_KEY` para ativar:\n- Geração real de imagens\n- Análise de arquivos e código\n- Respostas inteligentes completas" };
+        return { text: "Estou operando em Modo Demonstração." };
     }
     
     // --- Real AI Call ---
     try {
-        // Fast Path: Explicit Image Request (Frontend detected)
         if (isExplicitImageRequest) {
             return await executeImageGeneration(message);
         } 
         
-        // Standard Chat Path with Tools (Implicit Image Request)
+        // Standard Chat Path with Tools
         else {
             const parts: any[] = [];
             let textContext = "";
@@ -291,27 +290,16 @@ export const sendGeneralAiMessage = async (
             if(attachments && attachments.length > 0) {
                 attachments.forEach(att => {
                     if (att.mimeType && (att.mimeType.startsWith('image/') || att.mimeType.startsWith('audio/'))) {
-                         const base64Data = att.content.includes('base64,') 
-                            ? att.content.split('base64,')[1] 
-                            : att.content;
-                            
-                         parts.push({
-                             inlineData: {
-                                 mimeType: att.mimeType,
-                                 data: base64Data
-                             }
-                         });
+                         const base64Data = att.content.includes('base64,') ? att.content.split('base64,')[1] : att.content;
+                         parts.push({ inlineData: { mimeType: att.mimeType, data: base64Data } });
                     } else {
                         textContext += `\n--- ARQUIVO ANEXADO: ${att.name} ---\n${att.content}\n--- FIM DO ARQUIVO ---\n`;
                     }
                 });
             }
 
-            if (textContext) {
-                 textContext += "\nAnalise os arquivos acima conforme solicitado na mensagem abaixo.\n";
-            }
-            
-            parts.push({ text: textContext + message });
+            if (textContext) parts.push({ text: textContext + "\n" + message });
+            else parts.push({ text: message });
 
             const model = 'gemini-3-flash-preview'; 
             
@@ -320,53 +308,72 @@ export const sendGeneralAiMessage = async (
                 parts: [{ text: h.content }]
             }));
 
+            // INJECT DATE CONTEXT HERE
+            const systemInstruction = `Você é o assistente JP Projects.
+            ${getDateContext()}
+            
+            Regras:
+            1. Se o usuário pedir código, forneça-o em blocos Markdown.
+            2. Se o usuário pedir uma imagem/desenho/foto, USE A FERRAMENTA 'generate_image'.
+            3. Use o Google Search apenas para informações factuais recentes ou desconhecidas.
+            4. Responda de forma prestativa e profissional.`;
+
             const chat = ai.chats.create({
                 model: model,
                 history: chatHistory,
                 config: {
-                    // Provide the image tool here.
-                    tools: [{ functionDeclarations: [imageGenerationTool] }],
-                    systemInstruction: "Você é o assistente JP Projects. \n1. Se o usuário pedir código, forneça-o em blocos Markdown. \n2. Se o usuário pedir uma imagem/desenho/foto, USE A FERRAMENTA 'generate_image'.",
+                    // Added googleSearch alongside image tool
+                    tools: [
+                        { functionDeclarations: [imageGenerationTool] },
+                        { googleSearch: {} }
+                    ],
+                    systemInstruction: systemInstruction,
                 }
             });
 
             const result = await chat.sendMessage({ message: parts });
             
-            // Check for Function Call (Tool Use)
             const functionCalls = result.functionCalls;
             if (functionCalls && functionCalls.length > 0) {
                 const call = functionCalls[0];
                 if (call.name === 'generate_image') {
-                    // Extract prompt and run Image Gen
                     const prompt = (call.args as any).prompt;
                     return await executeImageGeneration(prompt);
                 }
             }
 
-            // Normal Text Response
             const responseText = result.text;
-            
-            // Extract code block if present
             const codeBlockRegex = /```(html|css|javascript|js|ts|typescript|json)?\n([\s\S]*?)```/;
             const match = responseText.match(codeBlockRegex);
             
             let codeData = undefined;
             if (match) {
-                codeData = {
-                    lang: match[1] || 'html',
-                    content: match[2]
-                };
+                codeData = { lang: match[1] || 'html', content: match[2] };
             }
 
-            return { text: responseText, code: codeData };
+            // Extract Search Grounding Sources
+            let sources: { title: string, uri: string }[] = [];
+            
+            if (result.candidates && result.candidates[0].groundingMetadata?.groundingChunks) {
+                result.candidates[0].groundingMetadata.groundingChunks.forEach((chunk: any) => {
+                    if (chunk.web && chunk.web.uri) {
+                        sources.push({
+                            title: chunk.web.title || new URL(chunk.web.uri).hostname,
+                            uri: chunk.web.uri
+                        });
+                    }
+                });
+                // Remove duplicates
+                sources = sources.filter((v,i,a)=>a.findIndex(v2=>(v2.uri===v.uri))===i);
+            }
+
+            return { text: responseText, code: codeData, sources: sources };
         }
     } catch (error: any) {
         console.error("Erro no chat IA:", error);
-        
         if (error.message && error.message.includes('API key')) {
              return { text: "⚠️ Erro de Configuração: Sua chave de API do Google parece inválida ou vazia." };
         }
-
         return { text: "Desculpe, ocorreu um erro na comunicação com a IA." };
     }
 };

@@ -112,6 +112,7 @@ export interface ChatMessage {
   codeLanguage?: string;
   codeContent?: string;
   attachments?: { name: string, content: string, mimeType?: string }[];
+  sources?: { title: string, uri: string }[]; // New field for Search Grounding
 }
 
 export interface AutomationRule {
