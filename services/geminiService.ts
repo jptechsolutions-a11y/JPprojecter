@@ -22,11 +22,21 @@ const getEnv = (key: string) => {
 // Prefer VITE_ prefixed keys if available, fallback to standard keys
 const apiKey = getEnv('VITE_GOOGLE_API_KEY') || getEnv('GOOGLE_API_KEY') || getEnv('API_KEY');
 
-const ai = new GoogleGenAI({ apiKey: apiKey });
+let ai: GoogleGenAI | null = null;
+if (apiKey) {
+    try {
+        ai = new GoogleGenAI({ apiKey: apiKey });
+    } catch (e) {
+        console.warn("Failed to initialize GoogleGenAI", e);
+    }
+} else {
+    console.warn("Google API Key is missing. AI features will be disabled.");
+}
 
 // --- Helper Functions ---
 
 export const generateTaskDescription = async (taskTitle: string): Promise<string> => {
+  if (!ai) return "IA indisponível: Chave de API não configurada.";
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -41,6 +51,7 @@ export const generateTaskDescription = async (taskTitle: string): Promise<string
 };
 
 export const generateSubtasks = async (taskTitle: string, taskDescription: string): Promise<string[]> => {
+  if (!ai) return [];
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -64,6 +75,7 @@ export const generateSubtasks = async (taskTitle: string, taskDescription: strin
 };
 
 export const assistCode = async (currentCode: string, instruction: string, language: string): Promise<string> => {
+    if (!ai) return currentCode + "\n// Erro: Chave de API da IA não configurada.";
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
@@ -84,6 +96,7 @@ export const assistCode = async (currentCode: string, instruction: string, langu
 }
 
 export const fixCodeError = async (code: string, error: string, language: string): Promise<string> => {
+    if (!ai) return code;
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
@@ -104,6 +117,7 @@ export const fixCodeError = async (code: string, error: string, language: string
 };
 
 export const generateFullProject = async (prompt: string): Promise<{name: string, language: string, content: string}[]> => {
+    if (!ai) return [];
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
@@ -142,6 +156,8 @@ export const sendGeneralAiMessage = async (
     generateImage = false, 
     attachments?: {name: string, content: string, mimeType?: string}[]
 ): Promise<{text: string, imageUrl?: string, code?: { lang: string, content: string }}> => {
+    if (!ai) return { text: "⚠️ A IA não está configurada. Por favor, verifique a variável de ambiente VITE_GOOGLE_API_KEY." };
+    
     try {
         if (generateImage) {
             const response = await ai.models.generateContent({
