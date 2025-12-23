@@ -190,7 +190,8 @@ export const api = {
           }
 
           // 2. Add Owner as Member
-          const { error: memberError } = await supabase
+          // Tenta inserir com a role 'owner'. Se a coluna não existir, tenta sem a role.
+          let { error: memberError } = await supabase
             .from('team_members')
             .insert({
                 team_id: teamData.id,
@@ -198,8 +199,22 @@ export const api = {
                 role: 'owner'
             });
 
+          // PGRST204: Could not find the 'role' column
+          if (memberError && memberError.code === 'PGRST204') {
+              console.warn("Schema warning: 'role' column missing in team_members. Inserting without role.");
+              const { error: retryError } = await supabase
+                .from('team_members')
+                .insert({
+                    team_id: teamData.id,
+                    user_id: ownerId
+                });
+              memberError = retryError;
+          }
+
           if (memberError) {
               console.error("Error adding owner:", memberError);
+              // Rollback: delete the created team to avoid orphans
+              await supabase.from('teams').delete().eq('id', teamData.id);
               return false;
           }
 
@@ -233,13 +248,24 @@ export const api = {
           }
 
           // 2. Add Member (Constraint ensures no duplicates)
-          const { error: memberError } = await supabase
+          let { error: memberError } = await supabase
             .from('team_members')
             .insert({
                 team_id: teamData.id,
                 user_id: userId,
                 role: 'member'
             });
+
+          // PGRST204 Fallback
+          if (memberError && memberError.code === 'PGRST204') {
+             const { error: retryError } = await supabase
+                .from('team_members')
+                .insert({
+                    team_id: teamData.id,
+                    user_id: userId
+                });
+             memberError = retryError;
+          }
 
           if (memberError) {
               // Ignore duplicate key error (already joined)
