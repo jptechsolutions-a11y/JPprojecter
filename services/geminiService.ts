@@ -1,6 +1,28 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper for safe environment access in Browser/Vite
+const getEnv = (key: string) => {
+    // 1. Try Vite/ESM import.meta.env
+    try {
+        if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env[key]) {
+            return (import.meta as any).env[key];
+        }
+    } catch(e) {}
+    
+    // 2. Try global process.env
+    try {
+        if (typeof process !== 'undefined' && process.env) {
+            return process.env[key];
+        }
+    } catch(e) {}
+
+    return '';
+};
+
+// Prefer VITE_ prefixed keys if available, fallback to standard keys
+const apiKey = getEnv('VITE_GOOGLE_API_KEY') || getEnv('GOOGLE_API_KEY') || getEnv('API_KEY');
+
+const ai = new GoogleGenAI({ apiKey: apiKey });
 
 // --- Helper Functions ---
 
