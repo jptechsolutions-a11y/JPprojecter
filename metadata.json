@@ -1,0 +1,8 @@
+{
+  "name": "JP Projects",
+  "description": "Uma ferramenta de gerenciamento de projetos moderna estilo Kanban com recursos de IA para equipes ágeis.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
