@@ -10,7 +10,7 @@ const mapUser = (u: any): User => ({
   email: u.email,
   avatar: u.avatar,
   coverImage: u.cover_image,
-  team: 't1', // Simplificado
+  team: 't1', // Deprecated but kept for type compat
   skills: u.skills || [],
   portfolio: u.portfolio,
   bio: u.bio
@@ -63,24 +63,36 @@ export const api = {
   // --- LOAD INITIAL DATA ---
   fetchProjectData: async (requestedTeamId: string | null) => {
     try {
-      // 1. Fetch Teams FIRST to ensure we have a valid UUID context
-      const { data: teamsData, error: teamsError } = await supabase.from('teams').select('*');
+      const { data: { session } } = await supabase.auth.getSession();
+      const currentUserId = session?.user?.id;
+
+      if (!currentUserId) return null;
+
+      // 1. Fetch Teams associated with the user via team_members table
+      const { data: teamMemberships, error: memberError } = await supabase
+        .from('team_members')
+        .select('team_id, teams(*)')
+        .eq('user_id', currentUserId);
       
-      if (teamsError) {
-          console.error("Error fetching teams:", teamsError);
+      if (memberError) {
+          console.error("Error fetching memberships:", memberError);
           return null;
       }
 
-      const teams = teamsData ? teamsData.map((t:any) => ({ 
-          id: t.id, 
-          name: t.name, 
-          description: t.description, 
-          members: [], 
-          inviteCode: t.invite_code 
-      })) : [];
+      // Extract teams from the join
+      const userTeams = teamMemberships
+        .map((tm: any) => tm.teams)
+        .filter(t => t !== null)
+        .map((t: any) => ({
+             id: t.id, 
+             name: t.name, 
+             description: t.description, 
+             members: [], // Will fetch users next
+             inviteCode: t.invite_code 
+        }));
 
-      if (teams.length === 0) {
-          // No teams exist, return empty structure to init app safely
+      // If user has no teams, return special empty state to trigger Onboarding in App.tsx
+      if (userTeams.length === 0) {
           return {
               users: [],
               teams: [],
@@ -92,17 +104,29 @@ export const api = {
           };
       }
 
-      // Determine valid Team ID (Handle 't1' mock ID or null)
+      // Determine valid Team ID
       let teamId = requestedTeamId;
-      const teamExists = teams.find(t => t.id === teamId);
+      const teamExists = userTeams.find(t => t.id === teamId);
       
       if (!teamId || !teamExists) {
-          teamId = teams[0].id;
+          teamId = userTeams[0].id;
       }
 
-      // 2. Users
-      const { data: usersData } = await supabase.from('profiles').select('*');
+      // 2. Fetch Users that belong to the current team
+      // Use team_members to filter profiles
+      const { data: teamUsersData } = await supabase
+        .from('team_members')
+        .select('user_id, profiles(*)')
+        .eq('team_id', teamId);
       
+      const mappedUsers = teamUsersData 
+        ? teamUsersData.map((tu: any) => mapUser(tu.profiles)).filter(u => u.id) 
+        : [];
+
+      // Update team member lists in our local team objects
+      const activeTeam = userTeams.find(t => t.id === teamId);
+      if(activeTeam) activeTeam.members = mappedUsers.map(u => u.id);
+
       // 3. Groups
       const { data: groupsData } = await supabase.from('task_groups').select('*').eq('team_id', teamId);
       
@@ -120,19 +144,17 @@ export const api = {
         `)
         .eq('team_id', teamId);
 
-      if (taskError) {
-          console.error("Error fetching tasks details:", JSON.stringify(taskError, null, 2));
-      }
+      if (taskError) console.error("Error fetching tasks:", taskError);
 
       // 6. Routines
       const { data: routinesData } = await supabase.from('routines').select('*').eq('team_id', teamId);
 
-      // 7. Notifications (Mocked or real)
-      const { data: notificationsData } = await supabase.from('notifications').select('*').order('created_at', { ascending: false });
+      // 7. Notifications (Fetch for current user)
+      const { data: notificationsData } = await supabase.from('notifications').select('*').eq('user_id', currentUserId).order('created_at', { ascending: false });
 
       return {
-        users: usersData ? usersData.map(mapUser) : [],
-        teams: teams,
+        users: mappedUsers,
+        teams: userTeams,
         groups: groupsData ? groupsData.map((g:any) => ({ id: g.id, title: g.title, color: g.color, teamId: g.team_id })) : [],
         columns: columnsData ? columnsData.map((c:any) => ({ id: c.id, title: c.title, color: c.color })) : [],
         tasks: tasksData ? tasksData.map(mapTask) : [],
@@ -144,6 +166,93 @@ export const api = {
       console.error("Critical error fetching data:", e);
       return null;
     }
+  },
+
+  // --- TEAM MANAGEMENT ---
+  createTeam: async (name: string, description: string, ownerId: string) => {
+      try {
+          // 1. Create Team
+          const inviteCode = `JP-${name.substring(0,3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+          const { data: teamData, error: teamError } = await supabase
+            .from('teams')
+            .insert({
+                name,
+                description,
+                owner_id: ownerId,
+                invite_code: inviteCode
+            })
+            .select()
+            .single();
+
+          if (teamError || !teamData) {
+              console.error("Error creating team:", teamError);
+              return false;
+          }
+
+          // 2. Add Owner as Member
+          const { error: memberError } = await supabase
+            .from('team_members')
+            .insert({
+                team_id: teamData.id,
+                user_id: ownerId,
+                role: 'owner'
+            });
+
+          if (memberError) {
+              console.error("Error adding owner:", memberError);
+              return false;
+          }
+
+          // 3. Create Default Groups for Kanban
+          const defaultGroups = [
+              { title: 'Desenvolvimento', color: '#00b4d8', team_id: teamData.id },
+              { title: 'Design & UX', color: '#a25ddc', team_id: teamData.id },
+              { title: 'Marketing', color: '#fdab3d', team_id: teamData.id }
+          ];
+          await supabase.from('task_groups').insert(defaultGroups);
+
+          return true;
+      } catch (e) {
+          console.error("Exception creating team:", e);
+          return false;
+      }
+  },
+
+  joinTeam: async (inviteCode: string, userId: string) => {
+      try {
+          // 1. Find Team
+          const { data: teamData, error: teamError } = await supabase
+            .from('teams')
+            .select('id')
+            .ilike('invite_code', inviteCode) // Case insensitive check
+            .single();
+
+          if (teamError || !teamData) {
+              console.error("Team not found or invalid code");
+              return false;
+          }
+
+          // 2. Add Member (Constraint ensures no duplicates)
+          const { error: memberError } = await supabase
+            .from('team_members')
+            .insert({
+                team_id: teamData.id,
+                user_id: userId,
+                role: 'member'
+            });
+
+          if (memberError) {
+              // Ignore duplicate key error (already joined)
+              if (memberError.code === '23505') return true; 
+              console.error("Error joining team:", memberError);
+              return false;
+          }
+
+          return true;
+      } catch (e) {
+          console.error("Exception joining team:", e);
+          return false;
+      }
   },
 
   // --- TASKS CRUD ---
@@ -191,12 +300,6 @@ export const api = {
 
     const { error } = await supabase.from('tasks').update(dbTask).eq('id', task.id);
     
-    // Handle Nested Updates (Subtasks, Attachments, Comments) 
-    // Note: For a real production app, handle these via separate API endpoints or specialized logic.
-    // For this prototype, we'll assume the frontend state is authoritative for rapid UI, 
-    // but specific subtask edits should ideally call specific endpoints.
-
-    // Example: Upsert subtasks
     if (task.subtasks.length > 0) {
         const subtasksDb = task.subtasks.map(s => ({
             id: s.id,
@@ -211,7 +314,6 @@ export const api = {
     }
 
     if (task.comments.length > 0) {
-        // Only insert new ones usually, but here upsert
         const commentsDb = task.comments.map(c => ({
             id: c.id,
             task_id: task.id,
@@ -250,14 +352,12 @@ export const api = {
   updateRoutine: async (routineId: string, updates: Partial<RoutineTask>) => {
       const dbUpdates: any = {};
       if(updates.lastCompletedDate) dbUpdates.last_completed_date = updates.lastCompletedDate;
-      // ... map other fields if necessary
       
       const { error } = await supabase.from('routines').update(dbUpdates).eq('id', routineId);
       return !error;
   }
 };
 
-// Initial Constants as Empty Placeholders to satisfy TS before load
 export const INITIAL_USERS: User[] = [];
 export const INITIAL_TEAMS: Team[] = [];
 export const INITIAL_GROUPS: TaskGroup[] = [];
