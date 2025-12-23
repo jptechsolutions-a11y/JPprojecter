@@ -15,15 +15,14 @@
               sans: ['Inter', 'sans-serif'],
             },
             colors: {
-              // Palette based on the "Perlog/JP" image
               primary: {
-                DEFAULT: '#00b4d8', // Cyan/Teal like
+                DEFAULT: '#00b4d8',
                 dark: '#0096c7',
                 light: '#90e0ef'
               },
               secondary: '#48cae4',
               navy: {
-                900: '#021221', // Deep Navy Background
+                900: '#021221',
                 800: '#0d1b2a',
                 700: '#1b263b',
               },
@@ -41,7 +40,6 @@
       body {
         font-family: 'Inter', sans-serif;
       }
-      /* Custom scrollbar for horizontal scrolling */
       .scrollbar-hide::-webkit-scrollbar {
           display: none;
       }
@@ -64,5 +62,7 @@
 </head>
   <body class="bg-gray-50 text-gray-900 dark:bg-[#021221] dark:text-gray-100 transition-colors duration-200">
     <div id="root"></div>
+    <!-- Adicionado o script para carregar a aplicação -->
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
