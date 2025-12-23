@@ -13,7 +13,6 @@ import { MeetingRoomView } from './components/MeetingRoomView';
 import { Task, User, Column, Status, Team, TaskGroup, RoutineTask, Notification } from './types';
 import { INITIAL_USERS, INITIAL_TEAMS, INITIAL_GROUPS, INITIAL_TASKS, INITIAL_COLUMNS, INITIAL_ROUTINES, INITIAL_NOTIFICATIONS } from './services/dataService';
 
-// Components
 const SidebarItem = ({ icon: Icon, label, active, onClick, collapsed }: any) => (
   <button
     onClick={onClick}
@@ -53,7 +52,6 @@ const TaskCard: React.FC<{ task: Task; user?: User; onClick: () => void }> = ({ 
         {task.title}
       </h3>
       
-      {/* Progress Bar */}
       <div className="w-full bg-gray-100 dark:bg-gray-700 h-1.5 rounded-full mt-2 mb-2 overflow-hidden">
         <div 
             className={`h-full rounded-full transition-all duration-500 ${task.progress === 100 ? 'bg-teal-500' : 'bg-[#00b4d8]'}`} 
@@ -81,7 +79,7 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeView, setActiveView] = useState<'list' | 'board' | 'gantt' | 'dashboard' | 'team' | 'profile' | 'routines' | 'ai' | 'meeting'>('list');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(true); // Default dark for better contrast check
+  const [isDarkMode, setIsDarkMode] = useState(true);
   
   const [currentTeamId, setCurrentTeamId] = useState<string>('t1');
   const [teams, setTeams] = useState<Team[]>(INITIAL_TEAMS);
@@ -96,20 +94,14 @@ export default function App() {
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
   const [preSelectedGroupId, setPreSelectedGroupId] = useState<string | null>(null);
   const [isTeamSelectorOpen, setIsTeamSelectorOpen] = useState(false);
-  
-  // Notification UI State
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  
-  // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMyTasks, setFilterMyTasks] = useState(false);
-
   const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]); 
   
   const currentTeam = teams.find(t => t.id === currentTeamId) || teams[0];
   const currentGroups = taskGroups.filter(g => g.teamId === currentTeamId);
 
-  // Toggle Dark Mode
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
@@ -118,29 +110,21 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  // Filter Logic
   const filteredTasks = useMemo(() => {
     return tasks.filter(t => {
-      // Team Filter
       if (t.teamId !== currentTeamId) return false;
-      
-      // My Tasks Filter
       if (filterMyTasks && t.assigneeId !== currentUser.id) return false;
-
-      // Search
       const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             t.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
       if (!matchesSearch) return false;
-
       return true;
     });
   }, [tasks, currentTeamId, searchQuery, filterMyTasks, currentUser.id]);
 
-  // --- Notification Helper ---
   const addNotification = (title: string, message: string, type: Notification['type'], userId: string = currentUser.id, taskId?: string) => {
       const newNote: Notification = {
           id: crypto.randomUUID(),
-          userId, // In a real app, this would target specific users
+          userId,
           type,
           title,
           message,
@@ -151,9 +135,7 @@ export default function App() {
       setNotifications(prev => [newNote, ...prev]);
   };
 
-  // Actions
   const handleUpdateTask = (updatedTask: Task) => {
-    // Check if critical fields changed to notify
     const oldTask = tasks.find(t => t.id === updatedTask.id);
     if (oldTask) {
         if (oldTask.status !== updatedTask.status) {
@@ -161,13 +143,11 @@ export default function App() {
         }
         if (oldTask.approvalStatus !== updatedTask.approvalStatus) {
              const statusMsg = updatedTask.approvalStatus === 'approved' ? 'Aprovada' : updatedTask.approvalStatus === 'rejected' ? 'Rejeitada' : 'Pendente';
-             // Notify the assignee about the approval status change
              if (updatedTask.assigneeId) {
                 addNotification('Atualização de Aprovação', `Sua tarefa foi ${statusMsg}`, updatedTask.approvalStatus === 'rejected' ? 'alert' : 'success', updatedTask.assigneeId, updatedTask.id);
              }
         }
     }
-
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
     if (selectedTask && selectedTask.id === updatedTask.id) {
         setSelectedTask(updatedTask);
@@ -177,11 +157,8 @@ export default function App() {
   const handleRequestApproval = (taskId: string, approverId: string) => {
       const task = tasks.find(t => t.id === taskId);
       if (!task) return;
-
       const updatedTask = { ...task, approvalStatus: 'pending' as const, approverId };
       handleUpdateTask(updatedTask);
-
-      // Notify the approver
       addNotification('Aprovação Solicitada', `${currentUser.name} solicitou sua aprovação em "${task.title}"`, 'approval', approverId, taskId);
   };
 
@@ -196,7 +173,6 @@ export default function App() {
     const title = formData.get('title') as string;
     const status = formData.get('status') as Status;
     const groupId = formData.get('groupId') as string;
-    
     const today = new Date().toISOString().split('T')[0];
 
     const newTask: Task = {
@@ -219,12 +195,10 @@ export default function App() {
     
     setTasks([...tasks, newTask]);
     addNotification('Nova Tarefa Criada', `A tarefa "${title}" foi adicionada ao quadro.`, 'success');
-    
     setIsNewTaskModalOpen(false);
     setPreSelectedGroupId(null);
   };
 
-  // Routine Handlers
   const handleToggleRoutine = (routineId: string) => {
     const today = new Date().toISOString().split('T')[0];
     setRoutines(prev => prev.map(r => {
@@ -258,13 +232,11 @@ export default function App() {
   const handleUpdateProfile = (field: keyof User, value: any) => {
     const updatedUser = { ...currentUser, [field]: value };
     setCurrentUser(updatedUser);
-    // Important: Update the user in the main list too so changes reflect everywhere
     setUsers(prev => prev.map(u => u.id === currentUser.id ? updatedUser : u));
   };
 
   const unreadNotifications = notifications.filter(n => !n.read).length;
 
-  // Renderers
   const renderBoard = () => (
     <div className="flex h-full gap-6 overflow-x-auto pb-4 items-start snap-x">
       {columns.map(column => {
@@ -350,17 +322,10 @@ export default function App() {
                             value={currentUser.role} 
                             onChange={(e) => handleUpdateProfile('role', e.target.value)}
                             className="text-gray-500 dark:text-gray-400 font-medium bg-transparent border-b border-transparent hover:border-gray-300 dark:hover:border-gray-600 focus:border-[#00b4d8] outline-none transition-colors w-auto min-w-[200px]"
-                            placeholder="Sua Função (ex: Dev Full Stack)"
+                            placeholder="Sua Função"
                         />
                      </div>
                      <p className="text-gray-400 text-sm">{currentUser.email}</p>
-                </div>
-                
-                <div className="hidden md:flex flex-col justify-center">
-                    <div className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-3 py-1 rounded-full text-xs font-bold border border-green-200 dark:border-green-800 flex items-center gap-2">
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        Online
-                    </div>
                 </div>
             </div>
 
@@ -374,61 +339,8 @@ export default function App() {
                         rows={4}
                         value={currentUser.bio || ''}
                         onChange={(e) => handleUpdateProfile('bio', e.target.value)}
-                        placeholder="Escreva uma breve biografia sobre sua experiência e objetivos..."
                     />
                 </section>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <section>
-                        <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-gray-700">
-                            <Sparkles size={18} className="text-[#00b4d8]" /> Competências & Habilidades
-                        </h3>
-                        <div className="flex flex-wrap gap-2 mb-3 bg-gray-50 dark:bg-[#0f172a] p-4 rounded-xl border border-gray-200 dark:border-gray-700 min-h-[100px] content-start">
-                            {currentUser.skills?.map((skill, index) => (
-                                <span key={index} className="bg-white dark:bg-[#1e293b] text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 dark:border-gray-600 flex items-center gap-2 group shadow-sm">
-                                    {skill}
-                                    <button 
-                                        onClick={() => {
-                                            const newSkills = currentUser.skills?.filter((_, i) => i !== index);
-                                            handleUpdateProfile('skills', newSkills);
-                                        }}
-                                        className="text-gray-400 hover:text-red-500 transition-colors"
-                                    >
-                                        <X size={14} />
-                                    </button>
-                                </span>
-                            ))}
-                            <button 
-                                onClick={() => {
-                                    const newSkill = prompt("Digite a nova competência:");
-                                    if (newSkill && newSkill.trim()) {
-                                        handleUpdateProfile('skills', [...(currentUser.skills || []), newSkill.trim()]);
-                                    }
-                                }}
-                                className="bg-[#00b4d8]/10 text-[#00b4d8] hover:bg-[#00b4d8]/20 px-3 py-1.5 rounded-lg text-sm border border-dashed border-[#00b4d8]/40 flex items-center gap-1 transition-colors font-medium"
-                            >
-                                <Plus size={16} /> Adicionar
-                            </button>
-                        </div>
-                    </section>
-
-                    <section>
-                        <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-gray-700">
-                            <LinkIcon size={18} className="text-[#00b4d8]" /> Portfólio & Links
-                        </h3>
-                        <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#0f172a] p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-                            <div className="p-2 bg-white dark:bg-[#1e293b] rounded-lg border border-gray-200 dark:border-gray-600">
-                                <LinkIcon size={20} className="text-[#00b4d8]" />
-                            </div>
-                            <input 
-                                value={currentUser.portfolio || ''}
-                                onChange={(e) => handleUpdateProfile('portfolio', e.target.value)}
-                                className="flex-1 bg-transparent border-none outline-none text-sm text-blue-600 dark:text-blue-400 underline font-medium"
-                                placeholder="https://seu-portfolio.com"
-                            />
-                        </div>
-                    </section>
-                </div>
             </div>
         </div>
       </div>
@@ -441,352 +353,84 @@ export default function App() {
 
   return (
     <div className={`flex h-screen bg-gray-50 dark:bg-[#0f172a] text-gray-900 dark:text-gray-100`}>
-      <aside 
-        className={`${isSidebarCollapsed ? 'w-20' : 'w-64'} bg-white dark:bg-[#1e293b] border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 ease-in-out relative shadow-sm z-30`}
-      >
-        <button 
-            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-            className="absolute -right-3 top-8 bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-gray-600 rounded-full p-1 shadow-md text-gray-500 hover:text-[#00b4d8] z-10"
-        >
+      <aside className={`${isSidebarCollapsed ? 'w-20' : 'w-64'} bg-white dark:bg-[#1e293b] border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 ease-in-out relative shadow-sm z-30`}>
+        <button onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} className="absolute -right-3 top-8 bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-gray-600 rounded-full p-1 shadow-md text-gray-500 hover:text-[#00b4d8] z-10">
             {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
-
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 relative h-20 flex items-center justify-center">
-          <button 
-            onClick={() => setIsTeamSelectorOpen(!isTeamSelectorOpen)}
-            className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'} p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors`}
-          >
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 h-20 flex items-center justify-center">
+          <button onClick={() => setIsTeamSelectorOpen(!isTeamSelectorOpen)} className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'} p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors`}>
              <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-[#00b4d8] rounded-lg flex-shrink-0 flex items-center justify-center text-white font-bold text-sm shadow-sm">
                   {currentTeam.name.substring(0, 2).toUpperCase()}
                 </div>
-                {!isSidebarCollapsed && (
-                    <div className="text-left overflow-hidden">
-                        <span className="block text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase whitespace-nowrap">Time Atual</span>
-                        <span className="block text-sm font-bold text-gray-800 dark:text-white truncate w-32">{currentTeam.name}</span>
-                    </div>
-                )}
+                {!isSidebarCollapsed && <span className="block text-sm font-bold truncate w-32">{currentTeam.name}</span>}
              </div>
              {!isSidebarCollapsed && <ChevronDown size={16} className="text-gray-500" />}
           </button>
         </div>
-        
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-hidden">
-          <SidebarItem 
-            icon={List} 
-            label="Projetos (Lista)" 
-            active={activeView === 'list'} 
-            onClick={() => setActiveView('list')} 
-            collapsed={isSidebarCollapsed}
-          />
-          <SidebarItem 
-            icon={Columns} 
-            label="Quadro Kanban" 
-            active={activeView === 'board'} 
-            onClick={() => setActiveView('board')} 
-            collapsed={isSidebarCollapsed}
-          />
-          <SidebarItem 
-            icon={CalendarRange} 
-            label="Cronograma" 
-            active={activeView === 'gantt'} 
-            onClick={() => setActiveView('gantt')} 
-            collapsed={isSidebarCollapsed}
-          />
-          <SidebarItem 
-            icon={Repeat} 
-            label="Rotinas" 
-            active={activeView === 'routines'} 
-            onClick={() => setActiveView('routines')} 
-            collapsed={isSidebarCollapsed}
-          />
-           <SidebarItem 
-            icon={Video} 
-            label="Sala de Reunião" 
-            active={activeView === 'meeting'} 
-            onClick={() => setActiveView('meeting')} 
-            collapsed={isSidebarCollapsed}
-          />
-          <SidebarItem 
-            icon={BarChart3} 
-            label="Indicadores" 
-            active={activeView === 'dashboard'} 
-            onClick={() => setActiveView('dashboard')} 
-            collapsed={isSidebarCollapsed}
-          />
-          <SidebarItem 
-            icon={Sparkles} 
-            label="IA Assistant" 
-            active={activeView === 'ai'} 
-            onClick={() => setActiveView('ai')} 
-            collapsed={isSidebarCollapsed}
-          />
-
-          <div className={`pt-4 pb-2 transition-opacity ${isSidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}>
-            <span className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Geral</span>
-          </div>
-          <SidebarItem 
-            icon={Users} 
-            label="Membros" 
-            active={activeView === 'team'} 
-            onClick={() => setActiveView('team')} 
-            collapsed={isSidebarCollapsed}
-          />
-          <SidebarItem 
-            icon={Settings} 
-            label="Meu Perfil" 
-            active={activeView === 'profile'} 
-            onClick={() => setActiveView('profile')} 
-            collapsed={isSidebarCollapsed}
-          />
+          <SidebarItem icon={List} label="Projetos (Lista)" active={activeView === 'list'} onClick={() => setActiveView('list')} collapsed={isSidebarCollapsed} />
+          <SidebarItem icon={Columns} label="Quadro Kanban" active={activeView === 'board'} onClick={() => setActiveView('board')} collapsed={isSidebarCollapsed} />
+          <SidebarItem icon={CalendarRange} label="Cronograma" active={activeView === 'gantt'} onClick={() => setActiveView('gantt')} collapsed={isSidebarCollapsed} />
+          <SidebarItem icon={Repeat} label="Rotinas" active={activeView === 'routines'} onClick={() => setActiveView('routines')} collapsed={isSidebarCollapsed} />
+          <SidebarItem icon={Video} label="Sala de Reunião" active={activeView === 'meeting'} onClick={() => setActiveView('meeting')} collapsed={isSidebarCollapsed} />
+          <SidebarItem icon={BarChart3} label="Indicadores" active={activeView === 'dashboard'} onClick={() => setActiveView('dashboard')} collapsed={isSidebarCollapsed} />
+          <SidebarItem icon={Sparkles} label="IA Assistant" active={activeView === 'ai'} onClick={() => setActiveView('ai')} collapsed={isSidebarCollapsed} />
+          <SidebarItem icon={Users} label="Membros" active={activeView === 'team'} onClick={() => setActiveView('team')} collapsed={isSidebarCollapsed} />
+          <SidebarItem icon={Settings} label="Meu Perfil" active={activeView === 'profile'} onClick={() => setActiveView('profile')} collapsed={isSidebarCollapsed} />
         </nav>
-
         <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
-           <button 
-             onClick={() => setIsDarkMode(!isDarkMode)}
-             className={`w-full flex items-center justify-center p-2 rounded-lg transition-colors ${isDarkMode ? 'bg-yellow-500/10 text-yellow-500' : 'bg-gray-100 text-gray-600'}`}
-             title="Alternar Tema"
-           >
+           <button onClick={() => setIsDarkMode(!isDarkMode)} className={`w-full flex items-center justify-center p-2 rounded-lg transition-colors ${isDarkMode ? 'bg-yellow-500/10 text-yellow-500' : 'bg-gray-100 text-gray-600'}`}>
              {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
            </button>
-           
-           <button 
-             onClick={() => setIsAuthenticated(false)}
-             className="w-full flex items-center justify-center p-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
-             title="Sair"
-           >
+           <button onClick={() => setIsAuthenticated(false)} className="w-full flex items-center justify-center p-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors">
              <LogOut size={18} />
            </button>
         </div>
       </aside>
-
-      {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden bg-gray-50 dark:bg-[#0f172a] transition-colors relative">
-        {/* Header with Filters & Notifications - HIDE IN MEETING */}
         {activeView !== 'meeting' && (
         <header className="h-16 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 bg-white dark:bg-[#1e293b] shrink-0 z-20 shadow-sm relative">
-           <div className="flex items-center gap-4">
-               <h2 className="text-xl font-bold text-gray-800 dark:text-white whitespace-nowrap">
+           <h2 className="text-xl font-bold text-gray-800 dark:text-white">
                 {activeView === 'list' ? 'Resumo do Projeto' : 
                  activeView === 'board' ? 'Quadro de Tarefas' : 
                  activeView === 'gantt' ? 'Cronograma' : 
-                 activeView === 'dashboard' ? 'Indicadores & Retro' : 
+                 activeView === 'dashboard' ? 'Indicadores' : 
                  activeView === 'profile' ? 'Meu Perfil' : 
-                 activeView === 'routines' ? 'Tarefas de Rotina' :
-                 activeView === 'ai' ? 'IA Assistant & Code' : 
-                 'Equipe'}
-              </h2>
-           </div>
-           
+                 activeView === 'routines' ? 'Rotinas' :
+                 activeView === 'ai' ? 'IA Assistant' : 'Equipe'}
+           </h2>
            <div className="flex items-center gap-4">
-             {/* Filter & Search */}
-             {activeView !== 'profile' && activeView !== 'ai' && (
-                 <div className="flex items-center gap-2">
-                    {/* My Tasks Toggle */}
-                    <button 
-                        onClick={() => setFilterMyTasks(!filterMyTasks)}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
-                            filterMyTasks 
-                            ? 'bg-[#00b4d8] text-white border-[#00b4d8]' 
-                            : 'bg-transparent text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:border-[#00b4d8]'
-                        }`}
-                    >
-                        <Filter size={14} /> Minhas
-                    </button>
-
-                    <div className="relative hidden md:block group">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[#00b4d8]" size={16} />
-                        <input 
-                        type="text" 
-                        placeholder="Pesquisar..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-9 pr-4 py-1.5 bg-gray-100 dark:bg-[#0f172a] dark:text-white rounded-full text-sm focus:bg-white dark:focus:bg-[#0f172a] focus:ring-2 focus:ring-[#00b4d8] border border-transparent focus:border-transparent transition-all outline-none w-48 hover:w-64"
-                        />
-                    </div>
-                </div>
-             )}
-
-             {/* Notifications */}
-             <div className="relative">
-                 <button 
-                    onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                    className="p-2 text-gray-500 hover:text-indigo-600 relative hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
-                 >
-                     <Bell size={20} />
-                     {unreadNotifications > 0 && (
-                         <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white dark:border-[#1e293b]"></span>
-                     )}
-                 </button>
-
-                 {isNotificationsOpen && (
-                     <div className="absolute top-full right-0 mt-2 w-80 bg-white dark:bg-[#1e293b] rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 z-50 animate-fade-in-up overflow-hidden">
-                         <div className="p-3 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-[#0d1b2a]">
-                             <h3 className="font-bold text-sm text-gray-700 dark:text-gray-200">Notificações</h3>
-                             <button onClick={() => setNotifications(prev => prev.map(n => ({...n, read: true})))} className="text-[10px] text-indigo-500 hover:underline">Marcar lidas</button>
-                         </div>
-                         <div className="max-h-80 overflow-y-auto">
-                             {notifications.length === 0 ? (
-                                 <div className="p-6 text-center text-gray-400 text-sm">
-                                     Nenhuma notificação nova.
-                                 </div>
-                             ) : (
-                                 notifications.map(note => (
-                                     <div key={note.id} className={`p-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-[#1b263b] transition-colors ${!note.read ? 'bg-indigo-50/30' : ''}`}>
-                                         <div className="flex gap-3">
-                                             <div className={`mt-1 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                                                 note.type === 'approval' ? 'bg-yellow-100 text-yellow-600' :
-                                                 note.type === 'alert' ? 'bg-red-100 text-red-600' :
-                                                 note.type === 'success' ? 'bg-green-100 text-green-600' :
-                                                 'bg-blue-100 text-blue-600'
-                                             }`}>
-                                                 {note.type === 'approval' ? <ShieldAlert size={14} /> :
-                                                  note.type === 'alert' ? <ShieldAlert size={14} /> :
-                                                  note.type === 'success' ? <CheckCircle size={14} /> :
-                                                  <Info size={14} />}
-                                             </div>
-                                             <div>
-                                                 <h4 className={`text-sm font-medium ${!note.read ? 'text-indigo-900 dark:text-indigo-200' : 'text-gray-800 dark:text-gray-300'}`}>{note.title}</h4>
-                                                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{note.message}</p>
-                                                 <span className="text-[10px] text-gray-400 mt-1 block">{new Date(note.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                             </div>
-                                         </div>
-                                     </div>
-                                 ))
-                             )}
-                         </div>
-                     </div>
-                 )}
-             </div>
-
-             {/* Profile */}
-             <div className="border-l border-gray-200 dark:border-gray-700 pl-4 cursor-pointer" onClick={() => setActiveView('profile')}>
+             <button onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} className="p-2 text-gray-500 hover:text-indigo-600 relative hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full">
+                 <Bell size={20} />
+                 {unreadNotifications > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white dark:border-[#1e293b]"></span>}
+             </button>
+             <div className="cursor-pointer" onClick={() => setActiveView('profile')}>
                 <Avatar src={currentUser.avatar} alt={currentUser.name} />
              </div>
            </div>
         </header>
         )}
-
-        {/* View Content */}
         <div className={`flex-1 overflow-auto ${activeView === 'meeting' ? 'p-0' : 'p-6'}`}>
-           {activeView === 'list' && (
-              <ProjectListView 
-                tasks={filteredTasks} 
-                taskGroups={currentGroups} 
-                users={users} 
-                onTaskClick={setSelectedTask} 
-                onAddTask={(groupId) => {
-                  setPreSelectedGroupId(groupId);
-                  setIsNewTaskModalOpen(true);
-                }}
-                onUpdateTask={handleUpdateTask}
-              />
-           )}
+           {activeView === 'list' && <ProjectListView tasks={filteredTasks} taskGroups={currentGroups} users={users} onTaskClick={setSelectedTask} onAddTask={setPreSelectedGroupId} onUpdateTask={handleUpdateTask} />}
            {activeView === 'board' && renderBoard()}
            {activeView === 'gantt' && <GanttView tasks={filteredTasks} users={users} onTaskClick={setSelectedTask} />}
            {activeView === 'dashboard' && <DashboardView tasks={tasks.filter(t => t.teamId === currentTeamId)} users={users} />}
-           {activeView === 'routines' && (
-              <RoutineTasksView 
-                  routines={routines} 
-                  users={users} 
-                  onToggleRoutine={handleToggleRoutine} 
-                  onAddRoutine={handleAddRoutine}
-              />
-           )}
+           {activeView === 'routines' && <RoutineTasksView routines={routines} users={users} onToggleRoutine={handleToggleRoutine} onAddRoutine={handleAddRoutine} />}
            {activeView === 'profile' && renderProfile()}
            {activeView === 'ai' && <AIAssistantView />}
            {activeView === 'meeting' && <MeetingRoomView users={users} currentUser={currentUser} />}
-           
-           {/* Simple placeholders for other views */}
-           {activeView === 'team' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {users.map(u => (
-                    <div key={u.id} className="p-6 border border-gray-200 dark:border-gray-700 rounded-xl text-center hover:shadow-lg transition-shadow bg-white dark:bg-[#1e293b]">
-                        <Avatar src={u.avatar} alt={u.name} size="xl" className="mx-auto mb-4 shadow-sm" />
-                        <h3 className="font-bold text-lg text-gray-800 dark:text-white">{u.name}</h3>
-                        <p className="text-gray-500 dark:text-gray-400">{u.role}</p>
-                        <p className="text-gray-400 text-sm mb-4">{u.email}</p>
-                    </div>
-                ))}
-              </div>
-           )}
         </div>
       </main>
-
-      {/* Deleted Chat Widget */}
-
-      {/* Task Details Modal */}
-      <Modal
-        isOpen={!!selectedTask}
-        onClose={() => setSelectedTask(null)}
-        title="Detalhes da Tarefa"
-      >
-        {selectedTask && (
-          <TaskDetail 
-            task={selectedTask} 
-            users={users} 
-            columns={columns}
-            currentUser={currentUser}
-            onUpdate={handleUpdateTask} 
-            onDelete={handleDeleteTask}
-            onRequestApproval={handleRequestApproval}
-          />
-        )}
+      <Modal isOpen={!!selectedTask} onClose={() => setSelectedTask(null)} title="Detalhes da Tarefa">
+        {selectedTask && <TaskDetail task={selectedTask} users={users} columns={columns} currentUser={currentUser} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} onRequestApproval={handleRequestApproval} />}
       </Modal>
-
-      {/* New Task Modal */}
-      <Modal
-        isOpen={isNewTaskModalOpen}
-        onClose={() => setIsNewTaskModalOpen(false)}
-        title="Criar Nova Tarefa"
-        maxWidth="max-w-md"
-      >
+      <Modal isOpen={isNewTaskModalOpen} onClose={() => setIsNewTaskModalOpen(false)} title="Criar Nova Tarefa" maxWidth="max-w-md">
         <form onSubmit={handleCreateTask} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Título da Tarefa</label>
-            <input 
-              name="title" 
-              type="text" 
-              required
-              autoFocus
-              placeholder="Ex: Atualizar documentação da API"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" 
-            />
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-              <select name="status" className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none">
-                  {columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Grupo</label>
-              <select 
-                name="groupId" 
-                defaultValue={preSelectedGroupId || currentGroups[0]?.id}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none"
-              >
-                  {currentGroups.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div className="pt-4 flex justify-end gap-3">
-             <button 
-               type="button"
-               onClick={() => setIsNewTaskModalOpen(false)}
-               className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg text-sm font-medium transition-colors"
-             >
-               Cancelar
-             </button>
-             <button 
-               type="submit"
-               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
-             >
-               Criar Tarefa
-             </button>
+          <input name="title" required placeholder="Título da Tarefa" className="w-full px-3 py-2 border rounded-lg" />
+          <div className="flex justify-end gap-3 pt-4">
+             <button type="button" onClick={() => setIsNewTaskModalOpen(false)} className="px-4 py-2">Cancelar</button>
+             <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg">Criar</button>
           </div>
         </form>
       </Modal>
