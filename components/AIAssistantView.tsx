@@ -5,8 +5,29 @@ import { ChatMessage, ChatHistoryItem, AutomationRule } from '../types';
 import { Modal } from './Modal';
 
 export const AIAssistantView: React.FC = () => {
-    // State for Chat
-    const [history, setHistory] = useState<ChatHistoryItem[]>([]);
+    // --- Persistence Logic: Lazy Initialize State ---
+    const [history, setHistory] = useState<ChatHistoryItem[]>(() => {
+        const saved = localStorage.getItem('jp_chat_history');
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                return parsed.map((h: any) => ({
+                    ...h,
+                    date: new Date(h.date),
+                    messages: h.messages.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }))
+                }));
+            } catch (e) { console.error("History parse error", e); return []; }
+        }
+        return [];
+    });
+
+    const [automations, setAutomations] = useState<AutomationRule[]>(() => {
+        const saved = localStorage.getItem('jp_automations');
+        try {
+            return saved ? JSON.parse(saved) : [];
+        } catch(e) { return []; }
+    });
+
     const [currentChatId, setCurrentChatId] = useState<string | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     
@@ -23,7 +44,6 @@ export const AIAssistantView: React.FC = () => {
     
     // State for Canvas/Execution
     const [canvasContent, setCanvasContent] = useState<string>('');
-    const [automations, setAutomations] = useState<AutomationRule[]>([]);
 
     // Automation Modal
     const [isAutoModalOpen, setIsAutoModalOpen] = useState(false);
@@ -32,39 +52,15 @@ export const AIAssistantView: React.FC = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const mediaInputRef = useRef<HTMLInputElement>(null);
 
-    // --- Persistence Logic ---
+    // Initial Setup (if empty)
     useEffect(() => {
-        // Load Chat History
-        const savedHistory = localStorage.getItem('jp_chat_history');
-        if (savedHistory) {
-            try {
-                const parsed = JSON.parse(savedHistory);
-                const restored = parsed.map((h: any) => ({
-                    ...h,
-                    date: new Date(h.date),
-                    messages: h.messages.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }))
-                }));
-                setHistory(restored);
-                if (restored.length > 0) {
-                    setCurrentChatId(restored[0].id);
-                    setMessages(restored[0].messages);
-                } else {
-                    createNewChat(); 
-                }
-            } catch (e) {
-                console.error("Error loading chat history", e);
-                createNewChat();
-            }
-        } else {
+        if (history.length === 0) {
             createNewChat();
-        }
-
-        // Load Automations
-        const savedAuto = localStorage.getItem('jp_automations');
-        if (savedAuto) {
-            try {
-                setAutomations(JSON.parse(savedAuto));
-            } catch(e) {}
+        } else if (!currentChatId) {
+            // Load most recent chat
+            const recent = history[0];
+            setCurrentChatId(recent.id);
+            setMessages(recent.messages);
         }
     }, []);
 
@@ -124,7 +120,7 @@ export const AIAssistantView: React.FC = () => {
         if(confirm('Excluir esta conversa?')) {
             const newHist = history.filter(h => h.id !== chatId);
             setHistory(newHist);
-            localStorage.setItem('jp_chat_history', JSON.stringify(newHist)); // Force save immediately
+            // localStorage saves via useEffect
             if (currentChatId === chatId) {
                 if (newHist.length > 0) loadChat(newHist[0].id);
                 else createNewChat();
@@ -216,17 +212,14 @@ export const AIAssistantView: React.FC = () => {
                 }
                 return h;
             });
-            // Also ensure active chat exists if somehow lost
-            if (!updated.find(h => h.id === currentChatId) && currentChatId) {
-                 // Should not happen, but safe fallback
-            }
+            // If the current chat wasn't found (rare race condition), ensure we return at least the updated version if logic permits
             return updated;
         });
     };
 
     // --- Automation CRUD ---
     const handleAddAutomation = (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault(); // Stop page reload
+        e.preventDefault(); 
         const formData = new FormData(e.currentTarget);
         
         const name = formData.get('name') as string;

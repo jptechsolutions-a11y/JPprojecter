@@ -202,25 +202,43 @@ export const generateFullProject = async (prompt: string): Promise<{name: string
 const executeImageGeneration = async (prompt: string): Promise<{ text: string, imageUrl?: string }> => {
     if (!ai) return { text: "Erro: IA não inicializada." };
     try {
-        const response = await ai.models.generateImages({
-            model: 'imagen-3.0-generate-001',
-            prompt: prompt,
+        // Correctly using gemini-2.5-flash-image via generateContent
+        // This model supports image output via parts inlineData
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+                parts: [{ text: prompt }]
+            },
             config: {
-                numberOfImages: 1,
-                aspectRatio: '1:1',
+                imageConfig: {
+                    aspectRatio: "1:1"
+                }
             }
         });
         
-        if (response.generatedImages && response.generatedImages.length > 0) {
-            const base64Image = response.generatedImages[0].image.imageBytes;
-            const imageUrl = `data:image/png;base64,${base64Image}`;
-            return { text: `Aqui está a imagem gerada para: "${prompt}"`, imageUrl };
-        } else {
-             return { text: "Não foi possível gerar a imagem. O modelo não retornou dados." };
+        let imageUrl: string | undefined;
+        let text = "";
+
+        if (response.candidates && response.candidates[0].content && response.candidates[0].content.parts) {
+            for (const part of response.candidates[0].content.parts) {
+                // IMPORTANT: The image part comes as inlineData in gemini-2.5-flash-image response
+                if (part.inlineData) {
+                    const base64EncodeString = part.inlineData.data;
+                    imageUrl = `data:${part.inlineData.mimeType};base64,${base64EncodeString}`;
+                } else if (part.text) {
+                    text += part.text;
+                }
+            }
         }
-    } catch (imgError) {
+
+        if (imageUrl) {
+            return { text: text || `Imagem gerada para: "${prompt}"`, imageUrl };
+        } else {
+             return { text: text || "Não foi possível gerar a imagem. Tente novamente." };
+        }
+    } catch (imgError: any) {
         console.error("Erro na geração de imagem (Tool):", imgError);
-        return { text: "Tentei gerar a imagem, mas ocorreu um erro no serviço Imagen. Tente um prompt mais simples." };
+        return { text: `Erro ao gerar imagem: ${imgError.message || 'Erro desconhecido'}` };
     }
 };
 
@@ -235,7 +253,6 @@ export const sendGeneralAiMessage = async (
     if (!ai) {
         await simulateDelay(1500);
         
-        // Simulating the intent detection in mock mode
         const lowerMsg = message.toLowerCase();
         const mockImageTrigger = isExplicitImageRequest || lowerMsg.includes('desenhe') || lowerMsg.includes('imagem') || lowerMsg.includes('foto');
 
@@ -256,7 +273,7 @@ export const sendGeneralAiMessage = async (
             };
         }
         
-        return { text: "Estou operando em Modo Demonstração. Adicione a `VITE_GOOGLE_API_KEY` para ativar:\n- Geração real de imagens (Imagen 3)\n- Análise de arquivos e código\n- Respostas inteligentes completas" };
+        return { text: "Estou operando em Modo Demonstração. Adicione a `VITE_GOOGLE_API_KEY` para ativar:\n- Geração real de imagens\n- Análise de arquivos e código\n- Respostas inteligentes completas" };
     }
     
     // --- Real AI Call ---
@@ -309,7 +326,7 @@ export const sendGeneralAiMessage = async (
                 config: {
                     // Provide the image tool here.
                     tools: [{ functionDeclarations: [imageGenerationTool] }],
-                    systemInstruction: "Você é o assistente JP Projects. \n1. Se o usuário pedir código, forneça-o em blocos Markdown. \n2. Se o usuário pedir uma imagem/desenho/foto, USE A FERRAMENTA 'generate_image'. NÃO invente JSON de resposta, chame a função.",
+                    systemInstruction: "Você é o assistente JP Projects. \n1. Se o usuário pedir código, forneça-o em blocos Markdown. \n2. Se o usuário pedir uma imagem/desenho/foto, USE A FERRAMENTA 'generate_image'.",
                 }
             });
 
@@ -320,7 +337,7 @@ export const sendGeneralAiMessage = async (
             if (functionCalls && functionCalls.length > 0) {
                 const call = functionCalls[0];
                 if (call.name === 'generate_image') {
-                    // Extract prompt and run Imagen
+                    // Extract prompt and run Image Gen
                     const prompt = (call.args as any).prompt;
                     return await executeImageGeneration(prompt);
                 }
