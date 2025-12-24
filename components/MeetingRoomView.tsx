@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { User } from '../types';
+
+import React, { useState, useEffect } from 'react';
+import { User, Meeting } from '../types';
 import { Avatar } from './Avatar';
+import { Modal } from './Modal';
 import { 
     Mic, MicOff, Video, VideoOff, PhoneOff, MonitorUp, 
     MessageSquare, Users, Sparkles, MoreVertical, 
-    Calendar, Clock, Plus, Send, X, Smile, Paperclip 
+    Calendar, Clock, Plus, Send, X, Smile, Paperclip, 
+    ExternalLink, CalendarDays, CheckCircle2, AlertCircle
 } from 'lucide-react';
 
 interface MeetingRoomViewProps {
@@ -19,36 +22,39 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({ users, current
     const [micOn, setMicOn] = useState(true);
     const [videoOn, setVideoOn] = useState(true);
     const [currentTime, setCurrentTime] = useState(new Date());
+    
+    // Agendamento State
+    const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+    const [meetings, setMeetings] = useState<Meeting[]>(() => {
+        const saved = localStorage.getItem('jp_meetings');
+        return saved ? JSON.parse(saved) : [
+            {
+                id: '1',
+                title: 'Daily Sincronização Tech',
+                description: 'Alinhamento matinal sobre os sprints atuais.',
+                date: new Date().toISOString().split('T')[0],
+                startTime: '09:00',
+                endTime: '09:30',
+                meetUrl: 'https://meet.google.com/new',
+                attendees: users.map(u => u.id),
+                teamId: 't1',
+                isGoogleMeet: true
+            }
+        ];
+    });
 
     // Chat State
     const [messages, setMessages] = useState([
-        { id: 1, user: users[1], text: 'Bom dia pessoal! Todos prontos?', time: '09:01' },
-        { id: 2, user: users[2], text: 'Sim, só ajustando meu mic.', time: '09:02' },
+        { id: 1, user: users[0], text: 'Bom dia pessoal! Link do Meet anexado na agenda.', time: '09:01' },
     ]);
     const [inputText, setInputText] = useState('');
 
-    // Request permissions on mount
     useEffect(() => {
-        const requestPermissions = async () => {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                // Permissions granted. We stop the tracks immediately as we don't have a real video element 
-                // in this UI mock to consume the stream yet, but this triggers the browser prompt.
-                stream.getTracks().forEach(track => track.stop());
-            } catch (err) {
-                console.error("Error requesting media permissions:", err);
-                // Optionally handle denial (e.g. setMicOn(false))
-                setMicOn(false);
-                setVideoOn(false);
-            }
-        };
-        
-        requestPermissions();
-    }, []);
+        localStorage.setItem('jp_meetings', JSON.stringify(meetings));
+    }, [meetings]);
 
-    // Clock
     useEffect(() => {
-        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        const timer = setInterval(() => setCurrentTime(new Date()), 60000);
         return () => clearInterval(timer);
     }, []);
 
@@ -64,110 +70,165 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({ users, current
         setInputText('');
     };
 
-    const toggleAi = () => {
-        setIsAiActive(!isAiActive);
-        if(!isAiActive) {
-            // Simulate AI activation notification
-            setMessages([...messages, {
-                id: Date.now(),
-                user: { ...currentUser, name: 'JP AI Copilot', id: 'ai' }, // Mock AI user
-                text: '🤖 Gravação e Transcrição iniciadas. Gerarei um resumo ao final da chamada.',
-                time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
-            }]);
-        }
+    const handleScheduleMeeting = (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+        const newMeeting: Meeting = {
+            id: crypto.randomUUID(),
+            title: formData.get('title') as string,
+            description: formData.get('description') as string,
+            date: formData.get('date') as string,
+            startTime: formData.get('startTime') as string,
+            endTime: formData.get('endTime') as string,
+            meetUrl: formData.get('meetUrl') as string || 'https://meet.google.com/new',
+            attendees: [currentUser.id],
+            teamId: 'current',
+            isGoogleMeet: true
+        };
+        setMeetings([...meetings, newMeeting]);
+        setIsScheduleModalOpen(false);
     };
 
-    // --- LOBBY VIEW (Before joining) ---
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todaysMeetings = meetings
+        .filter(m => m.date === todayStr)
+        .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+    // --- LOBBY VIEW ---
     if (!isInMeeting) {
         return (
-            <div className="h-full flex flex-col p-8 max-w-6xl mx-auto animate-fade-in">
-                <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">Sala de Reunião</h1>
-                    <p className="text-gray-500 dark:text-gray-400">Conecte-se com sua equipe, planeje sprints e discuta ideias.</p>
+            <div className="h-full flex flex-col p-8 max-w-6xl mx-auto animate-fade-in overflow-y-auto">
+                <div className="mb-8 flex justify-between items-end">
+                    <div>
+                        <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">Agenda de Reuniões</h1>
+                        <p className="text-gray-500 dark:text-gray-400">Sincronizado com seu fluxo de trabalho e Google Meet.</p>
+                    </div>
+                    <div className="text-right">
+                        <span className="text-4xl font-bold text-[#00b4d8]">{currentTime.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                        <p className="text-xs text-gray-400 font-medium uppercase tracking-widest">{currentTime.toLocaleDateString('pt-BR', {weekday:'long', day:'numeric', month:'long'})}</p>
+                    </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
-                    {/* Left: Actions */}
-                    <div className="space-y-6">
-                        <div className="bg-gradient-to-br from-indigo-600 to-blue-600 rounded-3xl p-8 text-white shadow-xl relative overflow-hidden group cursor-pointer transition-transform hover:scale-[1.01]" onClick={() => setIsInMeeting(true)}>
-                            <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Left: Quick Actions */}
+                    <div className="lg:col-span-1 space-y-6">
+                        <div 
+                            onClick={() => setIsInMeeting(true)}
+                            className="bg-gradient-to-br from-indigo-600 to-blue-600 rounded-3xl p-8 text-white shadow-xl cursor-pointer hover:scale-[1.02] transition-all group overflow-hidden relative"
+                        >
+                            <div className="absolute -right-4 -top-4 opacity-10 group-hover:rotate-12 transition-transform">
                                 <Video size={120} />
                             </div>
-                            <div className="relative z-10">
-                                <div className="bg-white/20 w-12 h-12 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-sm">
-                                    <Plus size={24} />
-                                </div>
-                                <h2 className="text-2xl font-bold mb-2">Nova Reunião</h2>
-                                <p className="text-indigo-100 mb-6">Inicie uma sala instantânea e convide o time.</p>
-                                <button className="bg-white text-indigo-600 px-6 py-3 rounded-xl font-bold text-sm shadow-sm hover:bg-gray-50 transition-colors">
-                                    Iniciar Agora
-                                </button>
-                            </div>
+                            <Plus size={32} className="mb-4 bg-white/20 p-1.5 rounded-lg" />
+                            <h2 className="text-xl font-bold mb-1">Sala Instantânea</h2>
+                            <p className="text-indigo-100 text-sm mb-6">Inicie agora uma chamada interna com o time.</p>
+                            <span className="bg-white text-indigo-600 px-4 py-2 rounded-xl text-xs font-bold shadow-lg">Iniciar Agora</span>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-white dark:bg-[#1e293b] p-6 rounded-3xl border border-gray-200 dark:border-gray-700 hover:border-indigo-500 cursor-pointer transition-colors group">
-                                <Calendar size={32} className="text-orange-500 mb-4 group-hover:scale-110 transition-transform" />
-                                <h3 className="font-bold text-gray-800 dark:text-white">Agendar</h3>
-                                <p className="text-xs text-gray-500 mt-1">Planeje para depois</p>
+                        <button 
+                            onClick={() => setIsScheduleModalOpen(true)}
+                            className="w-full bg-white dark:bg-[#1e293b] p-6 rounded-3xl border border-gray-200 dark:border-gray-700 hover:border-[#00b4d8] transition-colors flex items-center gap-4 group"
+                        >
+                            <div className="bg-orange-100 dark:bg-orange-900/30 p-3 rounded-2xl text-orange-600 group-hover:scale-110 transition-transform">
+                                <CalendarDays size={24} />
                             </div>
-                            <div className="bg-white dark:bg-[#1e293b] p-6 rounded-3xl border border-gray-200 dark:border-gray-700 hover:border-indigo-500 cursor-pointer transition-colors group">
-                                <MonitorUp size={32} className="text-teal-500 mb-4 group-hover:scale-110 transition-transform" />
-                                <h3 className="font-bold text-gray-800 dark:text-white">Compartilhar</h3>
-                                <p className="text-xs text-gray-500 mt-1">Apresentar tela</p>
+                            <div className="text-left">
+                                <h3 className="font-bold text-gray-800 dark:text-white">Agendar Reunião</h3>
+                                <p className="text-xs text-gray-500">Google Calendar & Meet</p>
                             </div>
-                        </div>
+                        </button>
                     </div>
 
-                    {/* Right: Upcoming & Preview */}
-                    <div className="flex flex-col gap-6">
-                        {/* Preview Box */}
-                        <div className="bg-gray-900 rounded-3xl overflow-hidden relative aspect-video shadow-2xl flex items-center justify-center border border-gray-800">
-                             <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/60"></div>
-                             <div className="text-center z-10">
-                                 <Avatar src={currentUser.avatar} alt={currentUser.name} size="xl" className="mx-auto mb-4 border-4 border-white/10" />
-                                 <h3 className="text-white font-medium">{currentUser.name}</h3>
-                                 <p className="text-gray-400 text-sm">Pronto para entrar?</p>
-                             </div>
-                             <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4">
-                                 <button onClick={() => setMicOn(!micOn)} className={`p-3 rounded-full ${micOn ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-red-500 text-white'}`}>
-                                     {micOn ? <Mic size={20} /> : <MicOff size={20} />}
-                                 </button>
-                                 <button onClick={() => setVideoOn(!videoOn)} className={`p-3 rounded-full ${videoOn ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-red-500 text-white'}`}>
-                                     {videoOn ? <Video size={20} /> : <VideoOff size={20} />}
-                                 </button>
-                             </div>
-                        </div>
-
-                        {/* Upcoming List */}
-                        <div className="bg-white dark:bg-[#1e293b] rounded-3xl p-6 border border-gray-200 dark:border-gray-700 flex-1">
-                            <h3 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
-                                <Clock size={18} className="text-indigo-500" /> Hoje
+                    {/* Right: Agenda Today */}
+                    <div className="lg:col-span-2 flex flex-col gap-4">
+                        <div className="bg-white dark:bg-[#1e293b] rounded-3xl p-6 border border-gray-200 dark:border-gray-700 h-full flex flex-col shadow-sm">
+                            <h3 className="font-bold text-gray-800 dark:text-white mb-6 flex items-center gap-2">
+                                <Clock size={20} className="text-[#00b4d8]" /> Compromissos de Hoje
                             </h3>
-                            <div className="space-y-3">
-                                <div className="flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-[#0f172a] transition-colors cursor-pointer border border-transparent hover:border-gray-200 dark:hover:border-gray-700">
-                                    <div className="w-12 h-12 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 flex flex-col items-center justify-center font-bold text-xs leading-none">
-                                        <span>10</span><span>:00</span>
+                            
+                            <div className="space-y-4 flex-1">
+                                {todaysMeetings.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-40 text-gray-400 italic">
+                                        <CheckCircle2 size={40} className="opacity-10 mb-2" />
+                                        <p className="text-sm">Nenhuma reunião agendada para hoje.</p>
                                     </div>
-                                    <div className="flex-1">
-                                        <h4 className="font-bold text-gray-800 dark:text-white text-sm">Daily Scrum</h4>
-                                        <p className="text-xs text-gray-500">Planejamento do dia</p>
-                                    </div>
-                                    <button className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">Entrar</button>
-                                </div>
-                                <div className="flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-[#0f172a] transition-colors cursor-pointer border border-transparent hover:border-gray-200 dark:hover:border-gray-700">
-                                    <div className="w-12 h-12 rounded-lg bg-orange-100 dark:bg-orange-900/30 text-orange-600 flex flex-col items-center justify-center font-bold text-xs leading-none">
-                                        <span>14</span><span>:30</span>
-                                    </div>
-                                    <div className="flex-1">
-                                        <h4 className="font-bold text-gray-800 dark:text-white text-sm">Review de Design</h4>
-                                        <p className="text-xs text-gray-500">Aprovação de telas</p>
-                                    </div>
-                                </div>
+                                ) : (
+                                    todaysMeetings.map((m) => (
+                                        <div key={m.id} className="group relative flex items-start gap-4 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-[#0f172a] transition-all">
+                                            <div className="flex flex-col items-center justify-center w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-2xl shrink-0 font-bold border dark:border-gray-700">
+                                                <span className="text-indigo-600 dark:text-[#00b4d8] text-sm">{m.startTime}</span>
+                                                <span className="text-[9px] text-gray-400 dark:text-gray-500">ATÉ {m.endTime}</span>
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <h4 className="font-bold text-gray-800 dark:text-white text-sm truncate">{m.title}</h4>
+                                                <p className="text-xs text-gray-500 truncate mb-2">{m.description || 'Sem descrição.'}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <Avatar src={currentUser.avatar} alt={currentUser.name} size="sm" />
+                                                    <span className="text-[10px] text-gray-400">+ {m.attendees.length - 1} convidados</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col gap-2">
+                                                <a 
+                                                    href={m.meetUrl} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                    className="bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-[#00b4d8] p-2 rounded-xl hover:bg-indigo-100 transition-colors flex items-center gap-2 text-xs font-bold"
+                                                >
+                                                    <ExternalLink size={14} /> Google Meet
+                                                </a>
+                                                <button onClick={() => setIsInMeeting(true)} className="bg-gray-800 dark:bg-[#00b4d8] text-white px-3 py-1.5 rounded-xl text-[10px] font-bold hover:bg-black transition-colors">
+                                                    Entrar Sala JP
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         </div>
                     </div>
                 </div>
+
+                {/* Scheduling Modal */}
+                <Modal isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} title="Agendar Nova Reunião">
+                    <form onSubmit={handleScheduleMeeting} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Título</label>
+                            <input name="title" required placeholder="Ex: Sincronização de Design" className="w-full p-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Data</label>
+                                <input name="date" type="date" required defaultValue={todayStr} className="w-full p-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Início</label>
+                                    <input name="startTime" type="time" required className="w-full p-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Fim</label>
+                                    <input name="endTime" type="time" required className="w-full p-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl" />
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Link do Google Meet (Opcional)</label>
+                            <div className="relative">
+                                <ExternalLink size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input name="meetUrl" placeholder="https://meet.google.com/..." className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl" />
+                            </div>
+                            <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1"><AlertCircle size={10} /> Deixe em branco para gerar um link novo depois.</p>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Descrição</label>
+                            <textarea name="description" rows={2} className="w-full p-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl resize-none"></textarea>
+                        </div>
+                        <div className="flex justify-end gap-3 pt-4">
+                            <button type="button" onClick={() => setIsScheduleModalOpen(false)} className="px-4 py-2 text-gray-500 font-bold">Cancelar</button>
+                            <button type="submit" className="bg-[#00b4d8] text-white px-6 py-2 rounded-xl font-bold shadow-lg shadow-cyan-500/20">Confirmar Agenda</button>
+                        </div>
+                    </form>
+                </Modal>
             </div>
         );
     }
@@ -175,171 +236,75 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({ users, current
     // --- ACTIVE MEETING VIEW ---
     return (
         <div className="h-full bg-[#121212] flex overflow-hidden relative">
-            
-            {/* Main Video Area */}
             <div className={`flex-1 flex flex-col transition-all duration-300 ${showChat ? 'mr-80' : ''}`}>
-                
-                {/* Header Overlay */}
                 <div className="absolute top-0 left-0 right-0 p-4 z-10 flex justify-between items-start bg-gradient-to-b from-black/60 to-transparent">
                     <div>
                         <h2 className="text-white font-bold text-lg flex items-center gap-2">
-                            Daily Sincronização 
+                            Sala JP Projects
                             {isAiActive && (
                                 <span className="bg-indigo-600/80 backdrop-blur text-white text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse border border-indigo-400">
-                                    <Sparkles size={10} /> IA Gravando
+                                    <Sparkles size={10} /> Gravando
                                 </span>
                             )}
                         </h2>
-                        <span className="text-gray-300 text-xs">{currentTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} | JP Projects Meet</span>
-                    </div>
-                    <div className="flex -space-x-2">
-                         {users.map((u, i) => (
-                             <div key={i} className="border-2 border-[#121212] rounded-full">
-                                 <Avatar src={u.avatar} alt={u.name} size="sm" />
-                             </div>
-                         ))}
-                         <div className="w-8 h-8 rounded-full bg-gray-700 text-white flex items-center justify-center text-xs border-2 border-[#121212]">+2</div>
+                        <span className="text-gray-300 text-xs">{currentTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     </div>
                 </div>
 
-                {/* Video Grid */}
-                <div className="flex-1 p-4 flex gap-4 overflow-hidden">
-                    {/* Main Speaker */}
-                    <div className="flex-1 bg-[#1e1e1e] rounded-2xl relative overflow-hidden flex items-center justify-center border border-gray-800 shadow-2xl">
-                        {/* Mock User Video Feed */}
+                <div className="flex-1 p-4 flex gap-4 overflow-hidden items-center justify-center">
+                    <div className="w-full max-w-4xl aspect-video bg-[#1e1e1e] rounded-3xl relative overflow-hidden flex items-center justify-center border border-gray-800 shadow-2xl">
                         <div className="text-center">
-                            <Avatar src={users[1].avatar} alt={users[1].name} className="w-32 h-32 mx-auto mb-4 text-4xl" />
-                            <div className="absolute bottom-4 left-4 bg-black/50 backdrop-blur px-3 py-1 rounded-lg text-white text-sm font-medium flex items-center gap-2">
-                                {users[1].name} <Mic size={14} className="text-green-400" />
+                            <Avatar src={users[0].avatar} alt={users[0].name} className="w-40 h-40 mx-auto mb-4 border-4 border-indigo-500/20" />
+                            <div className="bg-black/40 backdrop-blur px-4 py-1.5 rounded-full text-white font-medium flex items-center gap-2 border border-white/10">
+                                {users[0].name} <Mic size={14} className="text-green-400" />
                             </div>
                         </div>
-                        {/* Visualizer bars for audio */}
-                        <div className="absolute right-4 bottom-4 flex gap-1 h-8 items-end">
-                             {[1,2,3,4,3,2].map((h, i) => (
-                                 <div key={i} className="w-1 bg-green-500 rounded-full animate-pulse" style={{height: `${h * 20}%`}}></div>
-                             ))}
-                        </div>
-                    </div>
-
-                    {/* Sidebar Strip for others (if space allows, or use grid) */}
-                    <div className="w-64 flex flex-col gap-4 overflow-y-auto hidden lg:flex">
-                        <div className="flex-1 bg-[#1e1e1e] rounded-2xl relative overflow-hidden flex items-center justify-center border border-gray-800">
-                            <Avatar src={currentUser.avatar} alt="Você" size="lg" />
-                            <div className="absolute bottom-2 left-2 text-white text-xs bg-black/50 px-2 py-0.5 rounded">Você</div>
-                            {!micOn && <div className="absolute top-2 right-2 bg-red-500/80 p-1 rounded-full"><MicOff size={12} className="text-white"/></div>}
-                        </div>
-                         {users.slice(2).map(u => (
-                            <div key={u.id} className="flex-1 bg-[#1e1e1e] rounded-2xl relative overflow-hidden flex items-center justify-center border border-gray-800">
-                                <Avatar src={u.avatar} alt={u.name} size="lg" />
-                                <div className="absolute bottom-2 left-2 text-white text-xs bg-black/50 px-2 py-0.5 rounded">{u.name}</div>
-                            </div>
-                         ))}
                     </div>
                 </div>
 
-                {/* Controls Bar */}
-                <div className="h-20 flex items-center justify-center gap-4 pb-4">
-                     <div className="bg-[#1e1e1e] border border-gray-700 px-6 py-3 rounded-full flex items-center gap-4 shadow-2xl">
-                         <button 
-                            onClick={() => setMicOn(!micOn)}
-                            className={`p-3 rounded-full transition-all ${micOn ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-red-500 text-white shadow-lg shadow-red-500/30'}`}
-                         >
+                <div className="h-24 flex items-center justify-center gap-4 pb-6">
+                     <div className="bg-[#1e1e1e] border border-gray-700 px-8 py-3 rounded-full flex items-center gap-4 shadow-2xl">
+                         <button onClick={() => setMicOn(!micOn)} className={`p-3.5 rounded-full transition-all ${micOn ? 'bg-gray-700 text-white' : 'bg-red-500 text-white shadow-lg shadow-red-500/30'}`}>
                              {micOn ? <Mic size={20} /> : <MicOff size={20} />}
                          </button>
-                         <button 
-                            onClick={() => setVideoOn(!videoOn)}
-                            className={`p-3 rounded-full transition-all ${videoOn ? 'bg-gray-700 hover:bg-gray-600 text-white' : 'bg-red-500 text-white shadow-lg shadow-red-500/30'}`}
-                         >
+                         <button onClick={() => setVideoOn(!videoOn)} className={`p-3.5 rounded-full transition-all ${videoOn ? 'bg-gray-700 text-white' : 'bg-red-500 text-white shadow-lg shadow-red-500/30'}`}>
                              {videoOn ? <Video size={20} /> : <VideoOff size={20} />}
                          </button>
-                         
                          <div className="w-px h-8 bg-gray-700 mx-2"></div>
-                         
-                         <button 
-                             onClick={toggleAi}
-                             className={`p-3 rounded-full transition-all flex items-center gap-2 ${isAiActive ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/40' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
-                             title="IA Copilot: Resumo Automático"
-                         >
+                         <button onClick={() => setIsAiActive(!isAiActive)} className={`p-3.5 rounded-full transition-all ${isAiActive ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-300'}`}>
                              <Sparkles size={20} />
-                             {isAiActive && <span className="text-xs font-bold pr-1">Ativado</span>}
                          </button>
-
-                         <button className="p-3 rounded-full bg-gray-700 hover:bg-gray-600 text-white">
-                             <MonitorUp size={20} />
-                         </button>
-                         
-                         <button 
-                             onClick={() => setShowChat(!showChat)}
-                             className={`p-3 rounded-full transition-all ${showChat ? 'bg-indigo-500 text-white' : 'bg-gray-700 hover:bg-gray-600 text-white'}`}
-                         >
+                         <button onClick={() => setShowChat(!showChat)} className={`p-3.5 rounded-full transition-all ${showChat ? 'bg-indigo-500 text-white' : 'bg-gray-700 text-white'}`}>
                              <MessageSquare size={20} />
                          </button>
-
                          <div className="w-px h-8 bg-gray-700 mx-2"></div>
-
-                         <button 
-                            onClick={() => setIsInMeeting(false)}
-                            className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-full font-bold flex items-center gap-2 transition-colors"
-                         >
-                             <PhoneOff size={20} /> Sair
+                         <button onClick={() => setIsInMeeting(false)} className="bg-red-600 hover:bg-red-700 text-white px-8 py-3.5 rounded-full font-bold flex items-center gap-2 transition-colors shadow-lg shadow-red-600/20">
+                             <PhoneOff size={20} /> Encerrar
                          </button>
                      </div>
                 </div>
-
             </div>
 
-            {/* Side Chat Panel */}
-            <div 
-                className={`absolute right-0 top-0 bottom-0 w-80 bg-[#1e1e1e] border-l border-gray-800 transform transition-transform duration-300 flex flex-col z-20 ${showChat ? 'translate-x-0' : 'translate-x-full'}`}
-            >
-                <div className="p-4 border-b border-gray-800 flex justify-between items-center">
-                    <h3 className="text-white font-bold flex items-center gap-2">
-                        <MessageSquare size={18} /> Chat da Sala
-                    </h3>
-                    <button onClick={() => setShowChat(false)} className="text-gray-400 hover:text-white">
-                        <X size={18} />
-                    </button>
+            {/* Chat Panel */}
+            <div className={`absolute right-0 top-0 bottom-0 w-80 bg-[#1e1e1e] border-l border-gray-800 transition-transform duration-300 flex flex-col z-20 ${showChat ? 'translate-x-0' : 'translate-x-full'}`}>
+                <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-[#1e1e1e]">
+                    <h3 className="text-white font-bold flex items-center gap-2"><MessageSquare size={18} /> Chat da Sala</h3>
+                    <button onClick={() => setShowChat(false)} className="text-gray-400"><X size={18} /></button>
                 </div>
-                
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                    {messages.map(msg => {
-                        const isMe = msg.user.id === currentUser.id;
-                        const isAi = msg.user.id === 'ai';
-                        return (
-                            <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                <div className="flex items-center gap-2 mb-1">
-                                    {!isMe && !isAi && <span className="text-xs text-gray-400">{msg.user.name}</span>}
-                                    {isAi && <span className="text-xs text-indigo-400 font-bold flex items-center gap-1"><Sparkles size={10} /> Copilot</span>}
-                                    <span className="text-[10px] text-gray-600">{msg.time}</span>
-                                </div>
-                                <div className={`p-3 rounded-xl max-w-[90%] text-sm ${
-                                    isMe ? 'bg-indigo-600 text-white rounded-tr-none' : 
-                                    isAi ? 'bg-indigo-900/30 border border-indigo-500/30 text-indigo-100 rounded-tl-none' :
-                                    'bg-gray-800 text-gray-200 rounded-tl-none'
-                                }`}>
-                                    {msg.text}
-                                </div>
+                    {messages.map(msg => (
+                        <div key={msg.id} className={`flex flex-col ${msg.user.id === currentUser.id ? 'items-end' : 'items-start'}`}>
+                            <span className="text-[10px] text-gray-500 mb-1">{msg.user.name} • {msg.time}</span>
+                            <div className={`p-3 rounded-2xl max-w-[90%] text-sm ${msg.user.id === currentUser.id ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-gray-800 text-gray-200 rounded-tl-none'}`}>
+                                {msg.text}
                             </div>
-                        );
-                    })}
+                        </div>
+                    ))}
                 </div>
-
-                <div className="p-4 border-t border-gray-800 bg-[#1e1e1e]">
+                <div className="p-4 border-t border-gray-800">
                     <form onSubmit={handleSendMessage} className="relative">
-                        <input 
-                            type="text" 
-                            value={inputText}
-                            onChange={(e) => setInputText(e.target.value)}
-                            placeholder="Digite uma mensagem..."
-                            className="w-full bg-gray-800 text-white pl-4 pr-10 py-3 rounded-full text-sm outline-none focus:ring-2 focus:ring-indigo-500 border border-gray-700 placeholder-gray-500"
-                        />
-                        <button 
-                            type="submit"
-                            disabled={!inputText.trim()}
-                            className="absolute right-1 top-1 p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-50 disabled:bg-transparent transition-all"
-                        >
-                            <Send size={16} />
-                        </button>
+                        <input value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Mensagem..." className="w-full bg-gray-800 text-white pl-4 pr-10 py-3 rounded-2xl text-sm border border-gray-700 focus:ring-2 focus:ring-indigo-500" />
+                        <button type="submit" className="absolute right-2 top-2 p-1.5 bg-indigo-600 text-white rounded-full"><Send size={14}/></button>
                     </form>
                 </div>
             </div>

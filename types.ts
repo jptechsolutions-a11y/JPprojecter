@@ -1,3 +1,4 @@
+
 export type Priority = 'Baixa' | 'Média' | 'Alta';
 export type Status = string;
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'none';
@@ -20,8 +21,8 @@ export interface Team {
   name: string;
   description: string;
   members: string[];
-  inviteCode?: string; // New field for team code
-  avatar?: string; // New field for team logo
+  inviteCode?: string;
+  avatar?: string;
 }
 
 export interface TaskGroup {
@@ -35,9 +36,22 @@ export interface Subtask {
   id: string;
   title: string;
   completed: boolean;
-  assigneeId?: string; // New
-  dueDate?: string;    // New
-  startDate?: string;  // New
+  assigneeId?: string;
+  dueDate?: string;
+  startDate?: string;
+}
+
+export interface Meeting {
+    id: string;
+    title: string;
+    description?: string;
+    date: string; // ISO Date
+    startTime: string; // "HH:mm"
+    endTime: string; // "HH:mm"
+    meetUrl?: string; // Link do Google Meet
+    attendees: string[]; // IDs dos usuários
+    teamId: string;
+    isGoogleMeet: boolean;
 }
 
 export interface Attachment {
@@ -74,7 +88,7 @@ export interface Task {
   createdAt: string;
   teamId: string;
   approvalStatus: ApprovalStatus;
-  approverId?: string; // Quem deve aprovar a tarefa
+  approverId?: string;
 }
 
 export interface Column {
@@ -83,7 +97,6 @@ export interface Column {
   color: string;
 }
 
-// Routine Task (Recorrente)
 export interface RoutineTask {
     id: string;
     title: string;
@@ -91,9 +104,9 @@ export interface RoutineTask {
     teamId: string;
     assigneeId?: string;
     frequency: 'daily' | 'weekly' | 'monthly';
-    daysOfWeek?: number[]; // 0 = Dom, 1 = Seg, etc.
-    time?: string; // "14:00"
-    lastCompletedDate?: string; // ISO Date
+    daysOfWeek?: number[];
+    time?: string;
+    lastCompletedDate?: string;
 }
 
 export interface ChatHistoryItem {
@@ -113,18 +126,17 @@ export interface ChatMessage {
   codeLanguage?: string;
   codeContent?: string;
   attachments?: { name: string, content: string, mimeType?: string }[];
-  sources?: { title: string, uri: string }[]; // New field for Search Grounding
+  sources?: { title: string, uri: string }[];
 }
 
 export interface AutomationRule {
     id: string;
     name: string;
-    trigger: string; // "every_friday", "daily_9am"
+    trigger: string;
     prompt: string;
     active: boolean;
 }
 
-// Dev Environment Types
 export interface CodeFile {
     id: string;
     projectId: string;
@@ -142,11 +154,11 @@ export interface DevProject {
 
 export interface Notification {
     id: string;
-    userId: string; // Para quem é a notificação
+    userId: string;
     type: 'info' | 'approval' | 'alert' | 'success';
     title: string;
     message: string;
     read: boolean;
     timestamp: string;
-    taskId?: string; // Link opcional
+    taskId?: string;
 }

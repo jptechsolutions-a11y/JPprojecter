@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Sparkles, Repeat, Sun, Moon, Image as ImageIcon, Briefcase, Link as LinkIcon, X, Filter, Save, Bell, Info, ShieldAlert, CheckCircle, Video, FolderPlus, Building2 } from 'lucide-react';
 import { Avatar } from './components/Avatar';
@@ -86,6 +87,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<'list' | 'board' | 'gantt' | 'dashboard' | 'team' | 'profile' | 'routines' | 'ai' | 'meeting'>('list');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true); 
+  const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
   
   const [currentTeamId, setCurrentTeamId] = useState<string | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -127,11 +129,15 @@ export default function App() {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(!!session);
-      if (!session) {
-          setTeams([]);
-          setTasks([]);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+          setIsRecoveringPassword(true);
+      } else {
+          setIsAuthenticated(!!session);
+          if (!session) {
+              setTeams([]);
+              setTasks([]);
+          }
       }
     });
 
@@ -302,7 +308,9 @@ export default function App() {
     </div>
   );
 
-  if (!isAuthenticated) return <LoginView onLogin={() => setIsAuthenticated(true)} />;
+  if (!isAuthenticated || isRecoveringPassword) {
+      return <LoginView onLogin={() => { setIsAuthenticated(true); setIsRecoveringPassword(false); }} initialMode={isRecoveringPassword ? 'update-password' : 'login'} />;
+  }
 
   if (isLoadingData) {
       return (
