@@ -7,15 +7,18 @@ import {
     Mic, MicOff, Video, VideoOff, PhoneOff, MonitorUp, 
     MessageSquare, Users, Sparkles, MoreVertical, 
     Calendar, Clock, Plus, Send, X, Smile, Paperclip, 
-    ExternalLink, CalendarDays, CheckCircle2, AlertCircle
+    ExternalLink, CalendarDays, CheckCircle2, AlertCircle, Trash2, Loader2
 } from 'lucide-react';
+import { api } from '../services/dataService';
 
 interface MeetingRoomViewProps {
     users: User[];
     currentUser: User;
+    meetings: Meeting[];
+    onUpdateMeetings: () => void;
 }
 
-export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({ users, currentUser }) => {
+export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({ users, currentUser, meetings, onUpdateMeetings }) => {
     const [isInMeeting, setIsInMeeting] = useState(false);
     const [isAiActive, setIsAiActive] = useState(false);
     const [showChat, setShowChat] = useState(true);
@@ -25,33 +28,13 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({ users, current
     
     // Agendamento State
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
-    const [meetings, setMeetings] = useState<Meeting[]>(() => {
-        const saved = localStorage.getItem('jp_meetings');
-        return saved ? JSON.parse(saved) : [
-            {
-                id: '1',
-                title: 'Daily Sincronização Tech',
-                description: 'Alinhamento matinal sobre os sprints atuais.',
-                date: new Date().toISOString().split('T')[0],
-                startTime: '09:00',
-                endTime: '09:30',
-                meetUrl: 'https://meet.google.com/new',
-                attendees: users.map(u => u.id),
-                teamId: 't1',
-                isGoogleMeet: true
-            }
-        ];
-    });
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Chat State
+    // Chat State (Simulado interno por sala)
     const [messages, setMessages] = useState([
         { id: 1, user: users[0], text: 'Bom dia pessoal! Link do Meet anexado na agenda.', time: '09:01' },
     ]);
     const [inputText, setInputText] = useState('');
-
-    useEffect(() => {
-        localStorage.setItem('jp_meetings', JSON.stringify(meetings));
-    }, [meetings]);
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 60000);
@@ -70,11 +53,12 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({ users, current
         setInputText('');
     };
 
-    const handleScheduleMeeting = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleScheduleMeeting = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        setIsSubmitting(true);
         const formData = new FormData(e.currentTarget);
-        const newMeeting: Meeting = {
-            id: crypto.randomUUID(),
+        
+        const newMeeting: Partial<Meeting> = {
             title: formData.get('title') as string,
             description: formData.get('description') as string,
             date: formData.get('date') as string,
@@ -82,11 +66,29 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({ users, current
             endTime: formData.get('endTime') as string,
             meetUrl: formData.get('meetUrl') as string || 'https://meet.google.com/new',
             attendees: [currentUser.id],
-            teamId: 'current',
+            teamId: currentUser.team || (users.length > 0 ? (currentUser as any).teamId : 'current'), // Fallback dependendo de como o user está mapeado
             isGoogleMeet: true
         };
-        setMeetings([...meetings, newMeeting]);
-        setIsScheduleModalOpen(false);
+
+        // Garante que temos um teamId válido do contexto do currentUser ou da equipe ativa
+        const teamId = (currentUser as any).teamId || (window as any).lastActiveTeamId; 
+        // Nota: Idealmente o teamId vem do App.tsx, mas como o currentUser já está no contexto, usamos o dele.
+        
+        const created = await api.createMeeting({ ...newMeeting, teamId: (currentUser as any).teamId });
+        
+        if (created) {
+            onUpdateMeetings();
+            setIsScheduleModalOpen(false);
+        } else {
+            alert("Erro ao salvar reunião no banco de dados.");
+        }
+        setIsSubmitting(false);
+    };
+
+    const handleDeleteMeeting = async (id: string) => {
+        if(!confirm("Excluir agendamento?")) return;
+        const success = await api.deleteMeeting(id);
+        if (success) onUpdateMeetings();
     };
 
     const todayStr = new Date().toISOString().split('T')[0];
@@ -101,7 +103,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({ users, current
                 <div className="mb-8 flex justify-between items-end">
                     <div>
                         <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">Agenda de Reuniões</h1>
-                        <p className="text-gray-500 dark:text-gray-400">Sincronizado com seu fluxo de trabalho e Google Meet.</p>
+                        <p className="text-gray-500 dark:text-gray-400">Sincronizado com o banco de dados e Google Meet.</p>
                     </div>
                     <div className="text-right">
                         <span className="text-4xl font-bold text-[#00b4d8]">{currentTime.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
@@ -164,7 +166,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({ users, current
                                                 <p className="text-xs text-gray-500 truncate mb-2">{m.description || 'Sem descrição.'}</p>
                                                 <div className="flex items-center gap-2">
                                                     <Avatar src={currentUser.avatar} alt={currentUser.name} size="sm" />
-                                                    <span className="text-[10px] text-gray-400">+ {m.attendees.length - 1} convidados</span>
+                                                    <span className="text-[10px] text-gray-400">+ {m.attendees?.length > 0 ? m.attendees.length - 1 : 0} convidados</span>
                                                 </div>
                                             </div>
                                             <div className="flex flex-col gap-2">
@@ -176,9 +178,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({ users, current
                                                 >
                                                     <ExternalLink size={14} /> Google Meet
                                                 </a>
-                                                <button onClick={() => setIsInMeeting(true)} className="bg-gray-800 dark:bg-[#00b4d8] text-white px-3 py-1.5 rounded-xl text-[10px] font-bold hover:bg-black transition-colors">
-                                                    Entrar Sala JP
-                                                </button>
+                                                <div className="flex gap-1">
+                                                    <button onClick={() => setIsInMeeting(true)} className="flex-1 bg-gray-800 dark:bg-[#00b4d8] text-white px-3 py-1.5 rounded-xl text-[10px] font-bold hover:bg-black transition-colors">
+                                                        Entrar JP
+                                                    </button>
+                                                    <button onClick={() => handleDeleteMeeting(m.id)} className="p-2 text-gray-400 hover:text-red-500">
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     ))
@@ -193,21 +200,21 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({ users, current
                     <form onSubmit={handleScheduleMeeting} className="space-y-4">
                         <div>
                             <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Título</label>
-                            <input name="title" required placeholder="Ex: Sincronização de Design" className="w-full p-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl" />
+                            <input name="title" required placeholder="Ex: Sincronização de Design" className="w-full p-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl dark:text-white outline-none focus:ring-2 focus:ring-[#00b4d8]" />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Data</label>
-                                <input name="date" type="date" required defaultValue={todayStr} className="w-full p-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl" />
+                                <input name="date" type="date" required defaultValue={todayStr} className="w-full p-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl dark:text-white outline-none" />
                             </div>
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Início</label>
-                                    <input name="startTime" type="time" required className="w-full p-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl" />
+                                    <input name="startTime" type="time" required className="w-full p-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl dark:text-white outline-none" />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Fim</label>
-                                    <input name="endTime" type="time" required className="w-full p-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl" />
+                                    <input name="endTime" type="time" required className="w-full p-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl dark:text-white outline-none" />
                                 </div>
                             </div>
                         </div>
@@ -215,17 +222,19 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({ users, current
                             <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Link do Google Meet (Opcional)</label>
                             <div className="relative">
                                 <ExternalLink size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                                <input name="meetUrl" placeholder="https://meet.google.com/..." className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl" />
+                                <input name="meetUrl" placeholder="https://meet.google.com/..." className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl dark:text-white outline-none" />
                             </div>
-                            <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1"><AlertCircle size={10} /> Deixe em branco para gerar um link novo depois.</p>
+                            <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1"><AlertCircle size={10} /> O link será visível para todo o time.</p>
                         </div>
                         <div>
                             <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Descrição</label>
-                            <textarea name="description" rows={2} className="w-full p-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl resize-none"></textarea>
+                            <textarea name="description" rows={2} className="w-full p-2.5 bg-gray-50 dark:bg-gray-800 border rounded-xl resize-none dark:text-white outline-none"></textarea>
                         </div>
                         <div className="flex justify-end gap-3 pt-4">
                             <button type="button" onClick={() => setIsScheduleModalOpen(false)} className="px-4 py-2 text-gray-500 font-bold">Cancelar</button>
-                            <button type="submit" className="bg-[#00b4d8] text-white px-6 py-2 rounded-xl font-bold shadow-lg shadow-cyan-500/20">Confirmar Agenda</button>
+                            <button type="submit" disabled={isSubmitting} className="bg-[#00b4d8] text-white px-6 py-2 rounded-xl font-bold shadow-lg shadow-cyan-500/20 flex items-center gap-2">
+                                {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : "Confirmar Agenda"}
+                            </button>
                         </div>
                     </form>
                 </Modal>
@@ -233,7 +242,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({ users, current
         );
     }
 
-    // --- ACTIVE MEETING VIEW ---
+    // --- ACTIVE MEETING VIEW (INTERNAL) ---
     return (
         <div className="h-full bg-[#121212] flex overflow-hidden relative">
             <div className={`flex-1 flex flex-col transition-all duration-300 ${showChat ? 'mr-80' : ''}`}>
@@ -254,9 +263,9 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({ users, current
                 <div className="flex-1 p-4 flex gap-4 overflow-hidden items-center justify-center">
                     <div className="w-full max-w-4xl aspect-video bg-[#1e1e1e] rounded-3xl relative overflow-hidden flex items-center justify-center border border-gray-800 shadow-2xl">
                         <div className="text-center">
-                            <Avatar src={users[0].avatar} alt={users[0].name} className="w-40 h-40 mx-auto mb-4 border-4 border-indigo-500/20" />
+                            <Avatar src={currentUser.avatar} alt={currentUser.name} className="w-40 h-40 mx-auto mb-4 border-4 border-indigo-500/20" />
                             <div className="bg-black/40 backdrop-blur px-4 py-1.5 rounded-full text-white font-medium flex items-center gap-2 border border-white/10">
-                                {users[0].name} <Mic size={14} className="text-green-400" />
+                                {currentUser.name} <Mic size={14} className="text-green-400" />
                             </div>
                         </div>
                     </div>
@@ -303,7 +312,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({ users, current
                 </div>
                 <div className="p-4 border-t border-gray-800">
                     <form onSubmit={handleSendMessage} className="relative">
-                        <input value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Mensagem..." className="w-full bg-gray-800 text-white pl-4 pr-10 py-3 rounded-2xl text-sm border border-gray-700 focus:ring-2 focus:ring-indigo-500" />
+                        <input value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Mensagem..." className="w-full bg-gray-800 text-white pl-4 pr-10 py-3 rounded-2xl text-sm border border-gray-700 focus:ring-2 focus:ring-indigo-500 outline-none" />
                         <button type="submit" className="absolute right-2 top-2 p-1.5 bg-indigo-600 text-white rounded-full"><Send size={14}/></button>
                     </form>
                 </div>

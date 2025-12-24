@@ -14,7 +14,7 @@ import { AIAssistantView } from './components/AIAssistantView';
 import { MeetingRoomView } from './components/MeetingRoomView';
 import { TeamView } from './components/TeamView';
 import { ProfileView } from './components/ProfileView'; 
-import { Task, User, Column, Status, Team, TaskGroup, RoutineTask, Notification } from './types';
+import { Task, User, Column, Status, Team, TaskGroup, RoutineTask, Notification, Meeting } from './types';
 import { api } from './services/dataService'; 
 import { supabase } from './services/supabaseClient';
 
@@ -97,6 +97,7 @@ export default function App() {
   const [columns, setColumns] = useState<Column[]>([]);
   const [routines, setRoutines] = useState<RoutineTask[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
   
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
@@ -160,6 +161,7 @@ export default function App() {
               setTasks(data.tasks);
               setRoutines(data.routines);
               setNotifications(data.notifications);
+              setMeetings(data.meetings);
               
               const { data: { session } } = await supabase.auth.getSession();
               if (session) {
@@ -308,21 +310,6 @@ export default function App() {
     </div>
   );
 
-  if (!isAuthenticated || isRecoveringPassword) {
-      return <LoginView onLogin={() => { setIsAuthenticated(true); setIsRecoveringPassword(false); }} initialMode={isRecoveringPassword ? 'update-password' : 'login'} />;
-  }
-
-  if (isLoadingData) {
-      return (
-        <div className="h-screen w-full flex flex-col items-center justify-center bg-[#021221] text-white">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#00b4d8] mb-4"></div>
-            <p className="animate-pulse">Sincronizando Workspace...</p>
-        </div>
-      );
-  }
-
-  if (!hasTeams && currentUser) return <TeamOnboarding currentUser={currentUser} onComplete={() => loadData()} />;
-
   return (
     <div className={`flex h-screen bg-gray-50 dark:bg-[#0f172a] text-gray-900 dark:text-gray-100`}>
       <aside className={`${isSidebarCollapsed ? 'w-16' : 'w-56'} bg-white dark:bg-[#1e293b] border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 relative z-30 shadow-sm`}>
@@ -404,7 +391,7 @@ export default function App() {
            {activeView === 'routines' && <RoutineTasksView routines={routines} users={users} currentTeamId={currentTeamId || ''} onToggleRoutine={(id) => { api.updateRoutine(id, { lastCompletedDate: new Date().toISOString().split('T')[0] }).then(loadData); }} onAddRoutine={async (r) => { await api.createRoutine(r); loadData(); }} />}
            {activeView === 'profile' && currentUser && <ProfileView currentUser={currentUser} />}
            {activeView === 'ai' && <AIAssistantView />}
-           {activeView === 'meeting' && currentUser && <MeetingRoomView users={users} currentUser={currentUser} />}
+           {activeView === 'meeting' && currentUser && <MeetingRoomView users={users} currentUser={currentUser} meetings={meetings} onUpdateMeetings={loadData} />}
            {activeView === 'team' && currentTeam && <TeamView users={users} currentTeam={currentTeam} />}
         </div>
       </main>

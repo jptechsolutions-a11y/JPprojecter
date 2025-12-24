@@ -1,6 +1,6 @@
 
 import { supabase } from './supabaseClient';
-import { Task, User, Team, TaskGroup, Column, RoutineTask, Notification, Subtask, Attachment, Comment } from '../types';
+import { Task, User, Team, TaskGroup, Column, RoutineTask, Notification, Subtask, Attachment, Comment, Meeting } from '../types';
 
 // --- Mappers ---
 
@@ -57,6 +57,19 @@ const mapTask = (t: any): Task => ({
   }))
 });
 
+const mapMeeting = (m: any): Meeting => ({
+    id: m.id,
+    title: m.title,
+    description: m.description,
+    date: m.date,
+    startTime: m.start_time,
+    endTime: m.end_time,
+    meetUrl: m.meet_url,
+    attendees: m.attendees || [],
+    teamId: m.team_id,
+    isGoogleMeet: m.is_google_meet
+});
+
 export const api = {
   fetchProjectData: async (requestedTeamId: string | null) => {
     try {
@@ -83,7 +96,7 @@ export const api = {
              avatar: t.avatar
         }));
 
-      if (userTeams.length === 0) return { users: [], teams: [], groups: [], columns: [], tasks: [], routines: [], notifications: [] };
+      if (userTeams.length === 0) return { users: [], teams: [], groups: [], columns: [], tasks: [], routines: [], notifications: [], meetings: [] };
 
       let teamId = requestedTeamId;
       if (!teamId || !userTeams.find(t => t.id === teamId)) {
@@ -110,6 +123,7 @@ export const api = {
       const { data: tasksData } = await supabase.from('tasks').select('*, subtasks(*), attachments(*), comments(*)').eq('team_id', teamId);
       const { data: routinesData } = await supabase.from('routines').select('*').eq('team_id', teamId);
       const { data: notificationsData } = await supabase.from('notifications').select('*').eq('user_id', currentUserId).order('created_at', { ascending: false });
+      const { data: meetingsData } = await supabase.from('meetings').select('*').eq('team_id', teamId).order('date', { ascending: true });
 
       return {
         users: mappedUsers,
@@ -118,7 +132,8 @@ export const api = {
         columns: columnsData ? columnsData.map((c:any) => ({ id: c.id, title: c.title, color: c.color })) : [],
         tasks: tasksData ? tasksData.map(mapTask) : [],
         routines: routinesData ? routinesData.map((r:any) => ({ ...r, teamId: r.team_id, assigneeId: r.assignee_id, daysOfWeek: r.days_of_week, lastCompletedDate: r.last_completed_date })) : [],
-        notifications: notificationsData ? notificationsData.map((n:any) => ({ ...n, userId: n.user_id, taskId: n.task_id })) : []
+        notifications: notificationsData ? notificationsData.map((n:any) => ({ ...n, userId: n.user_id, taskId: n.task_id })) : [],
+        meetings: meetingsData ? meetingsData.map(mapMeeting) : []
       };
     } catch (e) { return null; }
   },
@@ -130,7 +145,7 @@ export const api = {
     if (updates.bio) dbUpdates.bio = updates.bio;
     if (updates.avatar) dbUpdates.avatar = updates.avatar;
     if (updates.coverImage) dbUpdates.cover_image = updates.coverImage;
-    if (updates.skills) dbUpdates.skills = updates.skills; // Corrigido: agora salva skills
+    if (updates.skills) dbUpdates.skills = updates.skills; 
     
     const { error } = await supabase.from('profiles').update(dbUpdates).eq('id', userId);
     return !error;
@@ -275,6 +290,26 @@ export const api = {
       const dbUpdates: any = {};
       if(updates.lastCompletedDate) dbUpdates.last_completed_date = updates.lastCompletedDate;
       const { error } = await supabase.from('routines').update(dbUpdates).eq('id', routineId);
+      return !error;
+  },
+
+  createMeeting: async (meeting: Partial<Meeting>) => {
+      const { data, error } = await supabase.from('meetings').insert({
+          team_id: meeting.teamId,
+          title: meeting.title,
+          description: meeting.description,
+          date: meeting.date,
+          start_time: meeting.startTime,
+          end_time: meeting.endTime,
+          meet_url: meeting.meetUrl,
+          attendees: meeting.attendees,
+          is_google_meet: meeting.isGoogleMeet
+      }).select().single();
+      return !error ? mapMeeting(data) : null;
+  },
+
+  deleteMeeting: async (id: string) => {
+      const { error } = await supabase.from('meetings').delete().eq('id', id);
       return !error;
   }
 };
