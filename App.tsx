@@ -106,7 +106,6 @@ export default function App() {
   const [isTeamSelectorOpen, setIsTeamSelectorOpen] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
   
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMyTasks, setFilterMyTasks] = useState(false);
 
@@ -138,6 +137,7 @@ export default function App() {
           if (!session) {
               setTeams([]);
               setTasks([]);
+              setCurrentUser(null);
           }
       }
     });
@@ -146,6 +146,7 @@ export default function App() {
   }, []);
 
   const loadData = useCallback(async () => {
+        if (!isAuthenticated) return;
         setIsLoadingData(true);
         const data = await api.fetchProjectData(currentTeamId);
         
@@ -166,7 +167,11 @@ export default function App() {
               const { data: { session } } = await supabase.auth.getSession();
               if (session) {
                   const foundUser = data.users.find((u: User) => u.id === session.user.id);
-                  if (foundUser) setCurrentUser(foundUser);
+                  if (foundUser) {
+                      setCurrentUser(foundUser);
+                      // Injetar o teamId no usuário para componentes filhos
+                      (foundUser as any).teamId = currentTeamId || data.teams[0].id;
+                  }
               }
 
               if (!currentTeamId && data.teams.length > 0) {
@@ -175,19 +180,18 @@ export default function App() {
           }
         }
         setIsLoadingData(false);
-  }, [currentTeamId]);
+  }, [currentTeamId, isAuthenticated]);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      loadData();
-    }
-  }, [isAuthenticated, currentTeamId, loadData]); 
+    loadData();
+  }, [loadData]); 
 
   const handleLogout = async () => {
       await supabase.auth.signOut();
       setIsAuthenticated(false);
       setHasTeams(true);
       setCurrentTeamId(null);
+      setCurrentUser(null);
   };
 
   useEffect(() => {
@@ -268,47 +272,15 @@ export default function App() {
       }
   };
 
-  const handleDragStart = (e: React.DragEvent, task: Task) => {
-      e.dataTransfer.setData('taskId', task.id);
-      e.dataTransfer.effectAllowed = 'move';
-  };
+  // --- RENDERING LOGIC ---
 
-  const handleDragOver = (e: React.DragEvent) => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-  };
+  if (!isAuthenticated || isRecoveringPassword) {
+    return <LoginView onLogin={() => setIsAuthenticated(true)} initialMode={isRecoveringPassword ? 'update-password' : 'login'} />;
+  }
 
-  const handleDrop = (e: React.DragEvent, statusId: string) => {
-      e.preventDefault();
-      const taskId = e.dataTransfer.getData('taskId');
-      const task = tasks.find(t => t.id === taskId);
-      if(task && task.status !== statusId) {
-          const updatedTask = { ...task, status: statusId };
-          setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
-          api.updateTask(updatedTask);
-      }
-  };
-
-  const renderBoard = () => (
-    <div className="flex h-full gap-6 overflow-x-auto pb-4 items-start snap-x">
-      {columns.map(column => {
-        const columnTasks = filteredTasks.filter(t => t.status === column.id);
-        return (
-          <div key={column.id} className="min-w-[300px] w-[300px] flex flex-col snap-center shrink-0" onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, column.id)}>
-            <div className={`flex items-center justify-between p-3 rounded-t-xl ${column.color} dark:bg-[#1e293b] border-b-2 border-[#00b4d8]`}>
-              <h3 className="font-bold text-gray-700 dark:text-gray-200 text-sm">{column.title}</h3>
-              <span className="bg-white/50 dark:bg-black/30 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded text-xs font-bold">{columnTasks.length}</span>
-            </div>
-            <div className={`p-3 space-y-3 bg-gray-50 dark:bg-[#0f172a] border-x border-b border-gray-200 dark:border-gray-700 rounded-b-xl h-full min-h-[150px]`}>
-              {columnTasks.map(task => (
-                <TaskCard key={task.id} task={task} user={users.find(u => u.id === task.assigneeId)} onClick={() => setSelectedTask(task)} onDragStart={handleDragStart} />
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
+  if (!hasTeams) {
+    return currentUser ? <TeamOnboarding currentUser={currentUser} onComplete={loadData} /> : null;
+  }
 
   return (
     <div className={`flex h-screen bg-gray-50 dark:bg-[#0f172a] text-gray-900 dark:text-gray-100`}>
@@ -356,7 +328,7 @@ export default function App() {
           <SidebarItem icon={CalendarRange} label="Cronograma" active={activeView === 'gantt'} onClick={() => setActiveView('gantt')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Repeat} label="Rotinas" active={activeView === 'routines'} onClick={() => setActiveView('routines')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Video} label="Sala de Reunião" active={activeView === 'meeting'} onClick={() => setActiveView('meeting')} collapsed={isSidebarCollapsed} />
-          <SidebarItem icon={BarChart3} label="Indicadores" active={activeView === 'dashboard'} onClick={() => setActiveView('dashboard')} collapsed={isSidebarCollapsed} />
+          <SidebarItem icon={BarChart3} label="Indicadores" active={activeView === 'dashboard'} onClick={() => setActiveView('dashboard'} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Sparkles} label="IA Assistant" active={activeView === 'ai'} onClick={() => setActiveView('ai')} collapsed={isSidebarCollapsed} />
           <div className={`pt-4 pb-2 transition-opacity ${isSidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}>
             <span className="px-4 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Geral</span>
@@ -369,14 +341,36 @@ export default function App() {
                </button>
            </div>
         </nav>
+
+        <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+             <button onClick={handleLogout} className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3 px-4'} py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors text-xs font-bold`}>
+                 <LogOut size={15} /> {!isSidebarCollapsed && "Sair"}
+             </button>
+        </div>
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden bg-gray-50 dark:bg-[#0f172a] transition-colors relative">
         <header className="h-16 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 bg-white dark:bg-[#1e293b] shrink-0 z-20 shadow-sm relative">
-           <h2 className="text-xl font-bold text-gray-800 dark:text-white whitespace-nowrap">
-              {activeView === 'list' ? 'Resumo do Projeto' : activeView === 'board' ? 'Quadro de Tarefas' : activeView === 'gantt' ? 'Cronograma' : activeView === 'dashboard' ? 'Indicadores' : activeView === 'team' ? 'Equipe' : 'JP Projects'}
-           </h2>
            <div className="flex items-center gap-4">
+               <h2 className="text-xl font-bold text-gray-800 dark:text-white whitespace-nowrap">
+                  {activeView === 'list' ? 'Resumo do Projeto' : activeView === 'board' ? 'Quadro de Tarefas' : activeView === 'gantt' ? 'Cronograma' : activeView === 'dashboard' ? 'Indicadores' : activeView === 'team' ? 'Equipe' : 'JP Projects'}
+               </h2>
+               <div className="hidden md:flex relative ml-4">
+                   <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                   <input 
+                      type="text" 
+                      placeholder="Buscar tarefas..." 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 pr-4 py-1.5 bg-gray-100 dark:bg-[#0f172a] border border-transparent focus:bg-white focus:ring-2 focus:ring-[#00b4d8] rounded-full text-xs outline-none transition-all w-64"
+                   />
+               </div>
+           </div>
+           
+           <div className="flex items-center gap-4">
+             <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
+                {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+             </button>
              <div className="border-l border-gray-200 dark:border-gray-700 pl-4 cursor-pointer" onClick={() => setActiveView('profile')}>
                 <Avatar src={currentUser?.avatar} alt={currentUser?.name || '?'} />
              </div>
@@ -385,7 +379,33 @@ export default function App() {
 
         <div className={`flex-1 overflow-auto ${activeView === 'meeting' ? 'p-0' : 'p-6'}`}>
            {activeView === 'list' && <ProjectListView tasks={filteredTasks} taskGroups={currentGroups} users={users} onTaskClick={setSelectedTask} onAddTask={(groupId) => { setPreSelectedGroupId(groupId); setIsNewTaskModalOpen(true); }} onUpdateTask={handleUpdateTask} onDeleteProject={handleDeleteProject} />}
-           {activeView === 'board' && renderBoard()}
+           {activeView === 'board' && (
+               <div className="flex h-full gap-6 overflow-x-auto pb-4 items-start snap-x">
+                 {columns.map(column => {
+                   const columnTasks = filteredTasks.filter(t => t.status === column.id);
+                   return (
+                     <div key={column.id} className="min-w-[300px] w-[300px] flex flex-col snap-center shrink-0" onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }} onDrop={(e) => {
+                         e.preventDefault();
+                         const taskId = e.dataTransfer.getData('taskId');
+                         const task = tasks.find(t => t.id === taskId);
+                         if(task && task.status !== column.id) {
+                             handleUpdateTask({ ...task, status: column.id });
+                         }
+                     }}>
+                       <div className={`flex items-center justify-between p-3 rounded-t-xl ${column.color} dark:bg-[#1e293b] border-b-2 border-[#00b4d8]`}>
+                         <h3 className="font-bold text-gray-700 dark:text-gray-200 text-sm">{column.title}</h3>
+                         <span className="bg-white/50 dark:bg-black/30 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded text-xs font-bold">{columnTasks.length}</span>
+                       </div>
+                       <div className={`p-3 space-y-3 bg-gray-50 dark:bg-[#0f172a] border-x border-b border-gray-200 dark:border-gray-700 rounded-b-xl h-full min-h-[150px]`}>
+                         {columnTasks.map(task => (
+                           <TaskCard key={task.id} task={task} user={users.find(u => u.id === task.assigneeId)} onClick={() => setSelectedTask(task)} onDragStart={(e, t) => e.dataTransfer.setData('taskId', t.id)} />
+                         ))}
+                       </div>
+                     </div>
+                   );
+                 })}
+               </div>
+           )}
            {activeView === 'gantt' && <GanttView tasks={filteredTasks} users={users} onTaskClick={setSelectedTask} />}
            {activeView === 'dashboard' && <DashboardView tasks={tasks.filter(t => t.teamId === currentTeamId)} users={users} />}
            {activeView === 'routines' && <RoutineTasksView routines={routines} users={users} currentTeamId={currentTeamId || ''} onToggleRoutine={(id) => { api.updateRoutine(id, { lastCompletedDate: new Date().toISOString().split('T')[0] }).then(loadData); }} onAddRoutine={async (r) => { await api.createRoutine(r); loadData(); }} />}
@@ -407,7 +427,7 @@ export default function App() {
             <div><label className="block text-sm font-medium mb-1 dark:text-gray-300">Status</label><select name="status" className="w-full px-3 py-2 border rounded-lg dark:bg-[#0f172a] dark:border-gray-700">{columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}</select></div>
             <div><label className="block text-sm font-medium mb-1 dark:text-gray-300">Grupo</label><select name="groupId" defaultValue={preSelectedGroupId || ''} className="w-full px-3 py-2 border rounded-lg dark:bg-[#0f172a] dark:border-gray-700">{currentGroups.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}</select></div>
           </div>
-          <div className="pt-4 flex justify-end gap-3"><button type="button" onClick={() => setIsNewTaskModalOpen(false)} className="px-4 py-2 text-gray-600">Cancelar</button><button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg">Criar</button></div>
+          <div className="pt-4 flex justify-end gap-3"><button type="button" onClick={() => setIsNewTaskModalOpen(false)} className="px-4 py-2 text-gray-600">Cancelar</button><button type="submit" className="px-4 py-2 bg-[#00b4d8] text-white rounded-lg font-bold">Criar</button></div>
         </form>
       </Modal>
 
@@ -425,7 +445,7 @@ export default function App() {
                     ))}
                 </div>
             </div>
-            <div className="pt-4 flex justify-end gap-3"><button type="button" onClick={() => setIsNewProjectModalOpen(false)} className="px-4 py-2 text-gray-600">Cancelar</button><button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg">Criar</button></div>
+            <div className="pt-4 flex justify-end gap-3"><button type="button" onClick={() => setIsNewProjectModalOpen(false)} className="px-4 py-2 text-gray-600">Cancelar</button><button type="submit" className="px-4 py-2 bg-[#00b4d8] text-white rounded-lg font-bold">Criar</button></div>
         </form>
       </Modal>
     </div>
