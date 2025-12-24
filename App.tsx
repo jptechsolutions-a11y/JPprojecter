@@ -129,6 +129,10 @@ export default function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsAuthenticated(!!session);
+      if (!session) {
+          setTeams([]);
+          setTasks([]);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -169,7 +173,7 @@ export default function App() {
     if (isAuthenticated) {
       loadData();
     }
-  }, [isAuthenticated, loadData]);
+  }, [isAuthenticated, currentTeamId, loadData]); // Re-runs when team changes
 
   const handleLogout = async () => {
       await supabase.auth.signOut();
@@ -198,20 +202,6 @@ export default function App() {
     });
   }, [tasks, currentTeamId, searchQuery, filterMyTasks, currentUser]);
 
-  const addNotification = (title: string, message: string, type: Notification['type'], userId: string = currentUser?.id || '0', taskId?: string) => {
-      const newNote: Notification = {
-          id: crypto.randomUUID(),
-          userId, 
-          type,
-          title,
-          message,
-          read: false,
-          timestamp: new Date().toISOString(),
-          taskId
-      };
-      setNotifications(prev => [newNote, ...prev]);
-  };
-
   const handleUpdateTask = async (updatedTask: Task) => {
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
     if (selectedTask && selectedTask.id === updatedTask.id) setSelectedTask(updatedTask);
@@ -234,26 +224,17 @@ export default function App() {
     
     const newTask: Task = {
       id: crypto.randomUUID(),
-      groupId,
-      title,
-      status,
-      description: '',
-      priority: 'Média',
+      groupId, title, status, description: '', priority: 'Média',
       startDate: new Date().toISOString().split('T')[0],
-      tags: [],
-      subtasks: [],
-      progress: 0,
-      attachments: [],
-      comments: [],
-      createdAt: new Date().toISOString(),
-      teamId: currentTeamId || '',
+      tags: [], subtasks: [], progress: 0, attachments: [], comments: [],
+      createdAt: new Date().toISOString(), teamId: currentTeamId || '',
       approvalStatus: 'none'
     };
     
     setTasks([...tasks, newTask]);
     setIsNewTaskModalOpen(false);
-    addNotification('Nova Tarefa', `Tarefa "${title}" criada.`, 'success');
     await api.createTask(newTask);
+    loadData();
   };
 
   const handleCreateProject = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -267,7 +248,6 @@ export default function App() {
       if(newGroup) {
           setTaskGroups([...taskGroups, {id: newGroup.id, title: newGroup.title, color: newGroup.color, teamId: newGroup.teamId}]);
           setIsNewProjectModalOpen(false);
-          addNotification('Projeto Criado', `Projeto "${title}" criado.`, 'success');
       }
   };
 
@@ -277,7 +257,6 @@ export default function App() {
       if(success) {
           setTaskGroups(prev => prev.filter(g => g.id !== groupId));
           setTasks(prev => prev.filter(t => t.groupId !== groupId));
-          addNotification('Projeto Excluído', 'O projeto foi removido.', 'info');
       }
   };
 
@@ -359,7 +338,6 @@ export default function App() {
              {!isSidebarCollapsed && <ChevronDown size={14} className="text-gray-500" />}
           </button>
           
-          {/* Team Switcher Dropdown */}
           {isTeamSelectorOpen && !isSidebarCollapsed && (
               <div className="absolute top-full left-0 w-full bg-white dark:bg-[#1b263b] shadow-xl border border-gray-100 dark:border-gray-700 z-50 rounded-b-xl py-2 mt-[-10px] animate-fade-in">
                   <div className="px-3 py-1 mb-1 border-b border-gray-50 dark:border-gray-700">
@@ -383,69 +361,39 @@ export default function App() {
           <SidebarItem icon={CalendarRange} label="Cronograma" active={activeView === 'gantt'} onClick={() => setActiveView('gantt')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Repeat} label="Rotinas" active={activeView === 'routines'} onClick={() => setActiveView('routines')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Video} label="Sala de Reunião" active={activeView === 'meeting'} onClick={() => setActiveView('meeting')} collapsed={isSidebarCollapsed} />
-          <SidebarItem icon={BarChart3} label="Indicadores" active={activeView === 'dashboard'} onClick={() => setActiveView('dashboard')} collapsed={isSidebarCollapsed} />
+          <SidebarItem icon={BarChart3} label="Indicadores" active={activeView === 'dashboard'} onClick={() => setActiveView('dashboard'} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Sparkles} label="IA Assistant" active={activeView === 'ai'} onClick={() => setActiveView('ai')} collapsed={isSidebarCollapsed} />
-          
           <div className={`pt-4 pb-2 transition-opacity ${isSidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}>
             <span className="px-4 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Geral</span>
           </div>
           <SidebarItem icon={Users} label="Membros" active={activeView === 'team'} onClick={() => setActiveView('team')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Settings} label="Meu Perfil" active={activeView === 'profile'} onClick={() => setActiveView('profile')} collapsed={isSidebarCollapsed} />
-          
            <div className="mt-4 px-2">
                <button onClick={() => setIsNewProjectModalOpen(true)} className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-start gap-2'} border border-dashed border-gray-400 text-gray-500 hover:text-indigo-500 hover:border-indigo-500 p-2 rounded-lg transition-colors text-xs font-bold`}>
                    <FolderPlus size={16} /> {!isSidebarCollapsed && "Novo Projeto"}
                </button>
            </div>
         </nav>
-
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
-           <button onClick={() => setIsDarkMode(!isDarkMode)} className={`w-full flex items-center justify-center p-2 rounded-lg transition-colors ${isDarkMode ? 'bg-yellow-500/10 text-yellow-500' : 'bg-gray-100 text-gray-600'}`}>
-             {isDarkMode ? <Sun size={16} /> : <Moon size={16} />}
-           </button>
-           <button onClick={handleLogout} className="w-full flex items-center justify-center p-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors">
-             <LogOut size={16} />
-           </button>
-        </div>
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden bg-gray-50 dark:bg-[#0f172a] transition-colors relative">
-        {activeView !== 'meeting' && (
         <header className="h-16 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 bg-white dark:bg-[#1e293b] shrink-0 z-20 shadow-sm relative">
            <h2 className="text-xl font-bold text-gray-800 dark:text-white whitespace-nowrap">
-              {activeView === 'list' ? 'Resumo do Projeto' : activeView === 'board' ? 'Quadro de Tarefas' : activeView === 'gantt' ? 'Cronograma' : activeView === 'dashboard' ? 'Indicadores & Retro' : activeView === 'team' ? 'Gestão de Equipe' : 'JP Projects'}
+              {activeView === 'list' ? 'Resumo do Projeto' : activeView === 'board' ? 'Quadro de Tarefas' : activeView === 'gantt' ? 'Cronograma' : activeView === 'dashboard' ? 'Indicadores' : activeView === 'team' ? 'Equipe' : 'JP Projects'}
            </h2>
            <div className="flex items-center gap-4">
-             {activeView !== 'profile' && activeView !== 'ai' && (
-                 <div className="flex items-center gap-2">
-                    <button onClick={() => setFilterMyTasks(!filterMyTasks)} className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${filterMyTasks ? 'bg-[#00b4d8] text-white border-[#00b4d8]' : 'bg-transparent text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:border-[#00b4d8]'}`}>
-                        <Filter size={14} /> Minhas
-                    </button>
-                    <div className="relative hidden md:block group">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[#00b4d8]" size={16} />
-                        <input type="text" placeholder="Pesquisar..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 pr-4 py-1.5 bg-gray-100 dark:bg-[#0f172a] dark:text-white rounded-full text-sm focus:bg-white dark:focus:bg-[#0f172a] focus:ring-2 focus:ring-[#00b4d8] border border-transparent focus:border-transparent transition-all outline-none w-48 hover:w-64" />
-                    </div>
-                </div>
-             )}
-             <div className="relative">
-                 <button onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} className="p-2 text-gray-500 hover:text-indigo-600 relative hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
-                     <Bell size={20} />
-                     {notifications.filter(n => !n.read).length > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white dark:border-[#1e293b]"></span>}
-                 </button>
-             </div>
              <div className="border-l border-gray-200 dark:border-gray-700 pl-4 cursor-pointer" onClick={() => setActiveView('profile')}>
                 <Avatar src={currentUser?.avatar} alt={currentUser?.name || '?'} />
              </div>
            </div>
         </header>
-        )}
 
         <div className={`flex-1 overflow-auto ${activeView === 'meeting' ? 'p-0' : 'p-6'}`}>
            {activeView === 'list' && <ProjectListView tasks={filteredTasks} taskGroups={currentGroups} users={users} onTaskClick={setSelectedTask} onAddTask={(groupId) => { setPreSelectedGroupId(groupId); setIsNewTaskModalOpen(true); }} onUpdateTask={handleUpdateTask} onDeleteProject={handleDeleteProject} />}
            {activeView === 'board' && renderBoard()}
            {activeView === 'gantt' && <GanttView tasks={filteredTasks} users={users} onTaskClick={setSelectedTask} />}
            {activeView === 'dashboard' && <DashboardView tasks={tasks.filter(t => t.teamId === currentTeamId)} users={users} />}
-           {activeView === 'routines' && <RoutineTasksView routines={routines} users={users} currentTeamId={currentTeamId || ''} onToggleRoutine={(id) => { const r = routines.find(x => x.id === id); if(r) api.updateRoutine(id, { lastCompletedDate: new Date().toISOString().split('T')[0] }).then(loadData); }} onAddRoutine={async (r) => { await api.createRoutine(r); loadData(); }} />}
+           {activeView === 'routines' && <RoutineTasksView routines={routines} users={users} currentTeamId={currentTeamId || ''} onToggleRoutine={(id) => { api.updateRoutine(id, { lastCompletedDate: new Date().toISOString().split('T')[0] }).then(loadData); }} onAddRoutine={async (r) => { await api.createRoutine(r); loadData(); }} />}
            {activeView === 'profile' && currentUser && <ProfileView currentUser={currentUser} />}
            {activeView === 'ai' && <AIAssistantView />}
            {activeView === 'meeting' && currentUser && <MeetingRoomView users={users} currentUser={currentUser} />}
@@ -459,10 +407,10 @@ export default function App() {
 
       <Modal isOpen={isNewTaskModalOpen} onClose={() => setIsNewTaskModalOpen(false)} title="Criar Nova Tarefa" maxWidth="max-w-md">
         <form onSubmit={handleCreateTask} className="space-y-4">
-          <div><label className="block text-sm font-medium mb-1">Título</label><input name="title" required className="w-full px-3 py-2 border rounded-lg" /></div>
+          <div><label className="block text-sm font-medium mb-1 dark:text-gray-300">Título</label><input name="title" required className="w-full px-3 py-2 border rounded-lg dark:bg-[#0f172a] dark:border-gray-700" /></div>
           <div className="grid grid-cols-2 gap-4">
-            <div><label className="block text-sm font-medium mb-1">Status</label><select name="status" className="w-full px-3 py-2 border rounded-lg">{columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}</select></div>
-            <div><label className="block text-sm font-medium mb-1">Grupo</label><select name="groupId" defaultValue={preSelectedGroupId || ''} className="w-full px-3 py-2 border rounded-lg">{currentGroups.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}</select></div>
+            <div><label className="block text-sm font-medium mb-1 dark:text-gray-300">Status</label><select name="status" className="w-full px-3 py-2 border rounded-lg dark:bg-[#0f172a] dark:border-gray-700">{columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}</select></div>
+            <div><label className="block text-sm font-medium mb-1 dark:text-gray-300">Grupo</label><select name="groupId" defaultValue={preSelectedGroupId || ''} className="w-full px-3 py-2 border rounded-lg dark:bg-[#0f172a] dark:border-gray-700">{currentGroups.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}</select></div>
           </div>
           <div className="pt-4 flex justify-end gap-3"><button type="button" onClick={() => setIsNewTaskModalOpen(false)} className="px-4 py-2 text-gray-600">Cancelar</button><button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg">Criar</button></div>
         </form>
@@ -470,22 +418,19 @@ export default function App() {
 
       <Modal isOpen={isNewProjectModalOpen} onClose={() => setIsNewProjectModalOpen(false)} title="Novo Projeto" maxWidth="max-w-md">
         <form onSubmit={handleCreateProject} className="space-y-4">
-            <div><label className="block text-sm font-medium mb-1">Nome do Projeto</label><input name="title" required placeholder="Ex: Campanha de Marketing" className="w-full px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-white" /></div>
+            <div><label className="block text-sm font-medium mb-1">Nome do Projeto</label><input name="title" required className="w-full px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 dark:border-gray-700" /></div>
             <div>
                 <label className="block text-sm font-medium mb-1">Cor</label>
                 <div className="flex gap-2">
                     {['#00b4d8', '#a25ddc', '#fdab3d', '#ff5c8d', '#20c997'].map(color => (
                         <label key={color} className="cursor-pointer">
                             <input type="radio" name="color" value={color} className="peer sr-only" defaultChecked={color === '#00b4d8'} />
-                            <div className="w-8 h-8 rounded-full peer-checked:ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 peer-checked:scale-110 transition-all" style={{backgroundColor: color}}></div>
+                            <div className="w-8 h-8 rounded-full peer-checked:ring-2 ring-[#00b4d8] ring-offset-2" style={{backgroundColor: color}}></div>
                         </label>
                     ))}
                 </div>
             </div>
-            <div className="pt-4 flex justify-end gap-3">
-                <button type="button" onClick={() => setIsNewProjectModalOpen(false)} className="px-4 py-2 text-gray-600 dark:text-gray-400">Cancelar</button>
-                <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg">Criar Projeto</button>
-            </div>
+            <div className="pt-4 flex justify-end gap-3"><button type="button" onClick={() => setIsNewProjectModalOpen(false)} className="px-4 py-2 text-gray-600">Cancelar</button><button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg">Criar</button></div>
         </form>
       </Modal>
     </div>

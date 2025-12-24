@@ -1,40 +1,8 @@
+
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 
-// Helper for safe environment access in Browser/Vite
-const getEnv = (key: string) => {
-    try {
-        if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env[key]) {
-            return (import.meta as any).env[key];
-        }
-    } catch(e) {}
-    
-    try {
-        if (typeof process !== 'undefined' && process.env) {
-            return process.env[key];
-        }
-    } catch(e) {}
-
-    return '';
-};
-
-// Robust Key Retrieval
-const rawApiKey = getEnv('VITE_GOOGLE_API_KEY') || getEnv('GOOGLE_API_KEY') || getEnv('API_KEY');
-const apiKey = (rawApiKey && rawApiKey.trim() !== '' && rawApiKey !== 'undefined' && rawApiKey !== 'null') ? rawApiKey : null;
-
-let ai: GoogleGenAI | null = null;
-
-if (apiKey) {
-    try {
-        ai = new GoogleGenAI({ apiKey: apiKey });
-    } catch (e) {
-        console.warn("Failed to initialize GoogleGenAI. Falling back to Mock Mode.", e);
-    }
-} else {
-    console.warn("Google API Key is missing. Running in Mock Mode (Simulated AI).");
-}
-
-// --- Helper: Mock Delay ---
-const simulateDelay = (ms = 1000) => new Promise(resolve => setTimeout(resolve, ms));
+// Fix: Always initialize GoogleGenAI strictly using process.env.API_KEY as per instructions.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // --- Helper: Get Current Date Context ---
 const getDateContext = () => {
@@ -62,12 +30,8 @@ const imageGenerationTool: FunctionDeclaration = {
 // --- Helper Functions ---
 
 export const generateTaskDescription = async (taskTitle: string): Promise<string> => {
-  if (!ai) {
-      await simulateDelay();
-      return `[IA Demo] Esta é uma descrição gerada automaticamente para a tarefa "${taskTitle}". \n\nO objetivo principal é garantir que todos os requisitos sejam atendidos com qualidade e dentro do prazo estipulado. Recomendamos dividir esta atividade em etapas menores para melhor acompanhamento.`;
-  }
-  
   try {
+    // Basic Text Task: Use gemini-3-flash-preview
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Escreva uma descrição profissional e detalhada para uma tarefa de gerenciamento de projeto com o título: "${taskTitle}". Mantenha conciso, cerca de 2-3 parágrafos.`,
@@ -81,18 +45,8 @@ export const generateTaskDescription = async (taskTitle: string): Promise<string
 };
 
 export const generateSubtasks = async (taskTitle: string, taskDescription: string): Promise<string[]> => {
-  if (!ai) {
-      await simulateDelay();
-      return [
-          "Analisar requisitos iniciais",
-          "Criar documentação técnica",
-          "Desenvolver protótipo funcional",
-          "Realizar testes de validação",
-          "Aprovar com stakeholders"
-      ];
-  }
-
   try {
+    // Basic Text Task: Use gemini-3-flash-preview
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Crie uma lista de checklist de 3 a 5 sub-tarefas acionáveis para completar a tarefa: "${taskTitle}". Contexto: ${taskDescription}.`,
@@ -107,7 +61,11 @@ export const generateSubtasks = async (taskTitle: string, taskDescription: strin
     
     const jsonStr = response.text;
     if (!jsonStr) return [];
-    return JSON.parse(jsonStr) as string[];
+    try {
+        return JSON.parse(jsonStr) as string[];
+    } catch (e) {
+        return [];
+    }
   } catch (error) {
     console.error("Erro ao gerar sub-tarefas:", error);
     return ["Erro na IA - Adicione itens manualmente"];
@@ -115,14 +73,10 @@ export const generateSubtasks = async (taskTitle: string, taskDescription: strin
 };
 
 export const assistCode = async (currentCode: string, instruction: string, language: string): Promise<string> => {
-    if (!ai) {
-        await simulateDelay();
-        return `${currentCode}\n\n// [IA Demo] Código otimizado conforme: "${instruction}"\n// (Adicione uma API Key válida para geração real)`;
-    }
-
     try {
+        // Coding Task: Upgrade to gemini-3-pro-preview for complex reasoning
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-3-pro-preview',
             contents: `Você é um assistente de codificação especialista. 
             Linguagem: ${language}.
             Código atual:
@@ -140,14 +94,10 @@ export const assistCode = async (currentCode: string, instruction: string, langu
 }
 
 export const fixCodeError = async (code: string, error: string, language: string): Promise<string> => {
-    if (!ai) {
-        await simulateDelay();
-        return code + "\n// [IA Demo] Correção simulada aplicada.";
-    }
-
     try {
+        // Coding Task: Upgrade to gemini-3-pro-preview for complex reasoning
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-3-pro-preview',
             contents: `Você é um especialista em debugging.
             Linguagem: ${language}
             Erro encontrado: ${error}
@@ -165,18 +115,10 @@ export const fixCodeError = async (code: string, error: string, language: string
 };
 
 export const generateFullProject = async (prompt: string): Promise<{name: string, language: string, content: string}[]> => {
-    if (!ai) {
-        await simulateDelay(2000);
-        return [
-            { name: "index.html", language: "html", content: "<!-- Demo Project -->\n<h1>Projeto Gerado (Demo)</h1>\n<p>Adicione uma API Key para gerar projetos reais.</p>" },
-            { name: "style.css", language: "css", content: "body { background: #f0f0f0; font-family: sans-serif; text-align: center; padding: 50px; }" },
-            { name: "script.js", language: "javascript", content: "console.log('Demo running...');" }
-        ];
-    }
-
     try {
+        // Coding Task: Upgrade to gemini-3-pro-preview for complex reasoning
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-3-pro-preview',
             contents: `Crie um projeto web simples (HTML, CSS, JS) baseado neste pedido: ${prompt}. 
             Retorne os arquivos necessários para rodar a aplicação.
             O arquivo HTML deve referenciar o CSS e o JS corretamente.`,
@@ -199,7 +141,11 @@ export const generateFullProject = async (prompt: string): Promise<{name: string
 
         const jsonStr = response.text;
         if (!jsonStr) return [];
-        return JSON.parse(jsonStr);
+        try {
+            return JSON.parse(jsonStr);
+        } catch (e) {
+            return [];
+        }
     } catch (error) {
         console.error("Erro ao gerar projeto:", error);
         return [];
@@ -207,7 +153,6 @@ export const generateFullProject = async (prompt: string): Promise<{name: string
 };
 
 const executeImageGeneration = async (prompt: string): Promise<{ text: string, imageUrl?: string }> => {
-    if (!ai) return { text: "Erro: IA não inicializada." };
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
@@ -224,11 +169,12 @@ const executeImageGeneration = async (prompt: string): Promise<{ text: string, i
         let imageUrl: string | undefined;
         let text = "";
 
+        // Fix: Correctly iterate through candidate parts to find the image as per guidelines.
         if (response.candidates && response.candidates[0].content && response.candidates[0].content.parts) {
             for (const part of response.candidates[0].content.parts) {
                 if (part.inlineData) {
                     const base64EncodeString = part.inlineData.data;
-                    imageUrl = `data:${part.inlineData.mimeType};base64,${base64EncodeString}`;
+                    imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${base64EncodeString}`;
                 } else if (part.text) {
                     text += part.text;
                 }
@@ -243,7 +189,6 @@ const executeImageGeneration = async (prompt: string): Promise<{ text: string, i
     } catch (imgError: any) {
         console.error("Erro na geração de imagem (Tool):", imgError);
         
-        // Handle Rate Limit Specifically (429)
         const isRateLimit = imgError.message?.includes('429') || 
                            imgError.status === 429 || 
                            (imgError.error && imgError.error.code === 429);
@@ -267,22 +212,6 @@ export const sendGeneralAiMessage = async (
     attachments?: {name: string, content: string, mimeType?: string}[]
 ): Promise<{text: string, imageUrl?: string, code?: { lang: string, content: string }, sources?: { title: string, uri: string }[]}> => {
     
-    // --- Mock Response for Demo ---
-    if (!ai) {
-        await simulateDelay(1500);
-        const lowerMsg = message.toLowerCase();
-        const mockImageTrigger = isExplicitImageRequest || lowerMsg.includes('desenhe') || lowerMsg.includes('imagem') || lowerMsg.includes('foto');
-
-        if (mockImageTrigger) {
-            return { 
-                text: "Como estou no modo de demonstração (sem API Key), gerei esta imagem simulada baseada em: " + message,
-                imageUrl: "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?q=80&w=1000&auto=format&fit=crop" 
-            };
-        }
-        return { text: "Estou operando em Modo Demonstração." };
-    }
-    
-    // --- Real AI Call ---
     try {
         if (isExplicitImageRequest) {
             return await executeImageGeneration(message);
@@ -314,7 +243,6 @@ export const sendGeneralAiMessage = async (
                 parts: [{ text: h.content }]
             }));
 
-            // INJECT DATE CONTEXT HERE - VERY EXPLICITLY
             const systemInstruction = `Você é o assistente JP Projects.
             
             IMPORTANTE:
@@ -327,15 +255,15 @@ export const sendGeneralAiMessage = async (
             3. Use o Google Search apenas para informações factuais recentes ou desconhecidas.
             4. Responda de forma prestativa e profissional.`;
 
+            // Fix: Compliance with "Only tools: googleSearch is permitted. Do not use it with other tools."
+            // We use conditional logic to decide which tool to provide based on search intent detection.
+            const useSearch = /(notícias|olimpíadas|paris 2024|clima|hoje|agora|atualmente|quem é|quem foi|fato)/i.test(message);
+
             const chat = ai.chats.create({
                 model: model,
                 history: chatHistory,
                 config: {
-                    // Added googleSearch alongside image tool
-                    tools: [
-                        { functionDeclarations: [imageGenerationTool] },
-                        { googleSearch: {} }
-                    ],
+                    tools: useSearch ? [{ googleSearch: {} }] : [{ functionDeclarations: [imageGenerationTool] }],
                     systemInstruction: systemInstruction,
                 }
             });
@@ -381,7 +309,6 @@ export const sendGeneralAiMessage = async (
     } catch (error: any) {
         console.error("Erro no chat IA:", error);
         
-        // Handle Rate Limit Specifically for Chat (in case text model fails too)
         const isRateLimit = error.message?.includes('429') || error.status === 429;
         if (isRateLimit) {
              return { text: "⚠️ **Muitas Requisições**\nEstamos recebendo muitas solicitações no momento. Por favor, aguarde alguns segundos e tente novamente." };
