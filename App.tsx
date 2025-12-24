@@ -173,7 +173,7 @@ export default function App() {
     if (isAuthenticated) {
       loadData();
     }
-  }, [isAuthenticated, currentTeamId, loadData]); // Re-runs when team changes
+  }, [isAuthenticated, currentTeamId, loadData]); 
 
   const handleLogout = async () => {
       await supabase.auth.signOut();
@@ -361,7 +361,7 @@ export default function App() {
           <SidebarItem icon={CalendarRange} label="Cronograma" active={activeView === 'gantt'} onClick={() => setActiveView('gantt')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Repeat} label="Rotinas" active={activeView === 'routines'} onClick={() => setActiveView('routines')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Video} label="Sala de Reunião" active={activeView === 'meeting'} onClick={() => setActiveView('meeting')} collapsed={isSidebarCollapsed} />
-          <SidebarItem icon={BarChart3} label="Indicadores" active={activeView === 'dashboard'} onClick={() => setActiveView('dashboard'} collapsed={isSidebarCollapsed} />
+          <SidebarItem icon={BarChart3} label="Indicadores" active={activeView === 'dashboard'} onClick={() => setActiveView('dashboard')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Sparkles} label="IA Assistant" active={activeView === 'ai'} onClick={() => setActiveView('ai')} collapsed={isSidebarCollapsed} />
           <div className={`pt-4 pb-2 transition-opacity ${isSidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}>
             <span className="px-4 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Geral</span>

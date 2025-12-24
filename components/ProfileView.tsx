@@ -68,7 +68,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser }) => {
         )}
         
         {isEditing && (
-            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer" onClick={() => coverInputRef.current?.click()}>
+            <div className="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer transition-opacity" onClick={() => coverInputRef.current?.click()}>
                 <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm text-white flex items-center gap-2">
                     <Camera size={24} /> <span className="font-bold text-sm">Alterar Capa</span>
                 </div>
@@ -84,7 +84,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser }) => {
                     <Avatar src={formData.avatar} alt={formData.name} size="xl" className="w-32 h-32 border-4 border-white dark:border-[#1e293b] shadow-lg" />
                     
                     {isEditing && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => avatarInputRef.current?.click()}>
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full cursor-pointer transition-opacity" onClick={() => avatarInputRef.current?.click()}>
                              <Camera size={24} className="text-white" />
                              <input ref={avatarInputRef} type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'avatar')} />
                         </div>
