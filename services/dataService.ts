@@ -128,30 +128,59 @@ export const api = {
   createTeam: async (name: string, description: string, ownerId: string) => {
       try {
           const inviteCode = `JP-${name.substring(0,3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+          
+          // Primeiro, criar o time
           const { data: teamData, error: teamError } = await supabase
             .from('teams')
-            .insert({ name, description, owner_id: ownerId, invite_code: inviteCode })
-            .select().single();
+            .insert({ 
+                name, 
+                description, 
+                owner_id: ownerId, 
+                invite_code: inviteCode 
+            })
+            .select()
+            .single();
 
-          if (teamError || !teamData) return false;
-
-          // Tentativa robusta de inserir o membro (evita erro 400 se a coluna role não existir)
-          const memberPayload: any = { team_id: teamData.id, user_id: ownerId };
-          
-          const { error: memberError } = await supabase.from('team_members').insert(memberPayload);
-          
-          if (memberError) {
-              console.error("Erro ao vincular membro ao time:", memberError);
+          if (teamError) {
+              console.error("Erro Supabase (teams):", teamError);
               return false;
           }
 
+          if (!teamData) return false;
+
+          // Segundo, vincular o criador como membro
+          const { error: memberError } = await supabase
+            .from('team_members')
+            .insert({ 
+                team_id: teamData.id, 
+                user_id: ownerId,
+                role: 'owner' // Garantindo que passamos o cargo se a coluna existir
+            });
+          
+          if (memberError) {
+              // Se falhar com cargo, tenta sem
+              const { error: retryError } = await supabase
+                .from('team_members')
+                .insert({ team_id: teamData.id, user_id: ownerId });
+                
+              if (retryError) {
+                  console.error("Erro crítico vincular membro:", retryError);
+                  return false;
+              }
+          }
+
+          // Criar grupos padrão
           const defaultGroups = [
               { title: 'Desenvolvimento', color: '#00b4d8', team_id: teamData.id },
               { title: 'Design & UX', color: '#a25ddc', team_id: teamData.id }
           ];
           await supabase.from('task_groups').insert(defaultGroups);
+          
           return true;
-      } catch (e) { return false; }
+      } catch (e) { 
+          console.error("Erro inesperado createTeam:", e);
+          return false; 
+      }
   },
 
   updateTeam: async (teamId: string, updates: Partial<Team>) => {
@@ -162,22 +191,28 @@ export const api = {
       return !error;
   },
 
-  // Added joinTeam method to allow users to join an existing team via invite code
   joinTeam: async (inviteCode: string, userId: string) => {
     try {
       const { data: teamData, error: teamError } = await supabase
         .from('teams')
         .select('id')
-        .eq('invite_code', inviteCode)
+        .eq('invite_code', inviteCode.toUpperCase().trim())
         .single();
 
       if (teamError || !teamData) return false;
 
       const { error: memberError } = await supabase
         .from('team_members')
-        .insert({ team_id: teamData.id, user_id: userId });
+        .insert({ team_id: teamData.id, user_id: userId, role: 'member' });
 
-      return !memberError;
+      if (memberError) {
+           const { error: retryError } = await supabase
+            .from('team_members')
+            .insert({ team_id: teamData.id, user_id: userId });
+           return !retryError;
+      }
+
+      return true;
     } catch (e) {
       return false;
     }
@@ -193,34 +228,37 @@ export const api = {
       return !error;
   },
 
-  // --- STORAGE & ATTACHMENTS ---
   uploadAttachment: async (taskId: string, file: File) => {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${taskId}/${Math.random()}.${fileExt}`;
-      const filePath = `attachments/${fileName}`;
+      try {
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${taskId}/${Math.random()}.${fileExt}`;
+          const filePath = `attachments/${fileName}`;
 
-      const { data, error: uploadError } = await supabase.storage
-        .from('attachments')
-        .upload(filePath, file);
+          const { data, error: uploadError } = await supabase.storage
+            .from('attachments')
+            .upload(filePath, file);
 
-      if (uploadError) {
-          console.error("Upload Error:", uploadError);
+          if (uploadError) {
+              console.error("Upload Error:", uploadError);
+              return null;
+          }
+
+          const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(filePath);
+
+          const { data: attData, error: dbError } = await supabase
+            .from('attachments')
+            .insert({
+                task_id: taskId,
+                name: file.name,
+                url: publicUrl,
+                type: file.type.includes('image') ? 'image' : 'file'
+            })
+            .select().single();
+
+          return dbError ? null : attData;
+      } catch (e) {
           return null;
       }
-
-      const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(filePath);
-
-      const { data: attData, error: dbError } = await supabase
-        .from('attachments')
-        .insert({
-            task_id: taskId,
-            name: file.name,
-            url: publicUrl,
-            type: file.type.includes('image') ? 'image' : 'file'
-        })
-        .select().single();
-
-      return dbError ? null : attData;
   },
 
   deleteAttachment: async (id: string) => {
@@ -228,7 +266,6 @@ export const api = {
       return !error;
   },
 
-  // --- TASKS ---
   createTask: async (task: Task) => {
     const { error } = await supabase.from('tasks').insert({
       id: task.id, team_id: task.teamId, group_id: task.groupId, title: task.title,

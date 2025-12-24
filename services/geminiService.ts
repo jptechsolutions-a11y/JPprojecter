@@ -1,13 +1,9 @@
 
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 
-// Fix: Always initialize GoogleGenAI strictly using process.env.API_KEY as per instructions.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 // --- Helper: Get Current Date Context ---
 const getDateContext = () => {
     const now = new Date();
-    // Force specific formatting to ensure model understands
     return `HOJE É: ${now.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}. HORA ATUAL: ${now.toLocaleTimeString('pt-BR')}.`;
 };
 
@@ -31,7 +27,7 @@ const imageGenerationTool: FunctionDeclaration = {
 
 export const generateTaskDescription = async (taskTitle: string): Promise<string> => {
   try {
-    // Basic Text Task: Use gemini-3-flash-preview
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Escreva uma descrição profissional e detalhada para uma tarefa de gerenciamento de projeto com o título: "${taskTitle}". Mantenha conciso, cerca de 2-3 parágrafos.`,
@@ -46,7 +42,7 @@ export const generateTaskDescription = async (taskTitle: string): Promise<string
 
 export const generateSubtasks = async (taskTitle: string, taskDescription: string): Promise<string[]> => {
   try {
-    // Basic Text Task: Use gemini-3-flash-preview
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Crie uma lista de checklist de 3 a 5 sub-tarefas acionáveis para completar a tarefa: "${taskTitle}". Contexto: ${taskDescription}.`,
@@ -74,7 +70,7 @@ export const generateSubtasks = async (taskTitle: string, taskDescription: strin
 
 export const assistCode = async (currentCode: string, instruction: string, language: string): Promise<string> => {
     try {
-        // Coding Task: Upgrade to gemini-3-pro-preview for complex reasoning
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-preview',
             contents: `Você é um assistente de codificação especialista. 
@@ -95,7 +91,7 @@ export const assistCode = async (currentCode: string, instruction: string, langu
 
 export const fixCodeError = async (code: string, error: string, language: string): Promise<string> => {
     try {
-        // Coding Task: Upgrade to gemini-3-pro-preview for complex reasoning
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-preview',
             contents: `Você é um especialista em debugging.
@@ -116,7 +112,7 @@ export const fixCodeError = async (code: string, error: string, language: string
 
 export const generateFullProject = async (prompt: string): Promise<{name: string, language: string, content: string}[]> => {
     try {
-        // Coding Task: Upgrade to gemini-3-pro-preview for complex reasoning
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-preview',
             contents: `Crie um projeto web simples (HTML, CSS, JS) baseado neste pedido: ${prompt}. 
@@ -154,6 +150,7 @@ export const generateFullProject = async (prompt: string): Promise<{name: string
 
 const executeImageGeneration = async (prompt: string): Promise<{ text: string, imageUrl?: string }> => {
     try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
             contents: {
@@ -169,7 +166,6 @@ const executeImageGeneration = async (prompt: string): Promise<{ text: string, i
         let imageUrl: string | undefined;
         let text = "";
 
-        // Fix: Correctly iterate through candidate parts to find the image as per guidelines.
         if (response.candidates && response.candidates[0].content && response.candidates[0].content.parts) {
             for (const part of response.candidates[0].content.parts) {
                 if (part.inlineData) {
@@ -188,20 +184,11 @@ const executeImageGeneration = async (prompt: string): Promise<{ text: string, i
         }
     } catch (imgError: any) {
         console.error("Erro na geração de imagem (Tool):", imgError);
-        
-        const isRateLimit = imgError.message?.includes('429') || 
-                           imgError.status === 429 || 
-                           (imgError.error && imgError.error.code === 429);
-
-        if (isRateLimit) {
-            const safePrompt = prompt ? prompt.substring(0, 50) : "Imagem";
-            return { 
-                text: "⚠️ **Limite de Cota de Imagem Atingido**\n\nO limite gratuito da API Gemini para geração de imagens foi excedido temporariamente. \n\nAbaixo está um **Exemplo Visual (Placeholder)** para não interromper seu fluxo:", 
-                imageUrl: `https://placehold.co/600x600/1e293b/white?text=${encodeURIComponent(safePrompt + '...')}`
-            };
-        }
-
-        return { text: `Erro ao gerar imagem: ${imgError.message || 'Erro desconhecido'}` };
+        const safePrompt = prompt ? prompt.substring(0, 50) : "Imagem";
+        return { 
+            text: "Erro ao gerar imagem. Verifique sua cota.", 
+            imageUrl: `https://placehold.co/600x600/1e293b/white?text=${encodeURIComponent(safePrompt)}`
+        };
     }
 };
 
@@ -217,106 +204,83 @@ export const sendGeneralAiMessage = async (
             return await executeImageGeneration(message);
         } 
         
-        // Standard Chat Path with Tools
-        else {
-            const parts: any[] = [];
-            let textContext = "";
+        const parts: any[] = [];
+        let textContext = "";
 
-            if(attachments && attachments.length > 0) {
-                attachments.forEach(att => {
-                    if (att.mimeType && (att.mimeType.startsWith('image/') || att.mimeType.startsWith('audio/'))) {
-                         const base64Data = att.content.includes('base64,') ? att.content.split('base64,')[1] : att.content;
-                         parts.push({ inlineData: { mimeType: att.mimeType, data: base64Data } });
-                    } else {
-                        textContext += `\n--- ARQUIVO ANEXADO: ${att.name} ---\n${att.content}\n--- FIM DO ARQUIVO ---\n`;
-                    }
-                });
-            }
-
-            if (textContext) parts.push({ text: textContext + "\n" + message });
-            else parts.push({ text: message });
-
-            const model = 'gemini-3-flash-preview'; 
-            
-            const chatHistory = history.map(h => ({
-                role: h.role,
-                parts: [{ text: h.content }]
-            }));
-
-            const systemInstruction = `Você é o assistente JP Projects.
-            
-            IMPORTANTE:
-            ${getDateContext()}
-            Use esta data para todos os cálculos temporais. Se o usuário mencionar uma data diferente, corrija gentilmente com base na data de hoje.
-            
-            Regras:
-            1. Se o usuário pedir código, forneça-o em blocos Markdown.
-            2. Se o usuário pedir uma imagem/desenho/foto, USE A FERRAMENTA 'generate_image'.
-            3. Use o Google Search apenas para informações factuais recentes ou desconhecidas.
-            4. Responda de forma prestativa e profissional.`;
-
-            // Fix: Compliance with "Only tools: googleSearch is permitted. Do not use it with other tools."
-            // We use conditional logic to decide which tool to provide based on search intent detection.
-            const useSearch = /(notícias|olimpíadas|paris 2024|clima|hoje|agora|atualmente|quem é|quem foi|fato)/i.test(message);
-
-            const chat = ai.chats.create({
-                model: model,
-                history: chatHistory,
-                config: {
-                    tools: useSearch ? [{ googleSearch: {} }] : [{ functionDeclarations: [imageGenerationTool] }],
-                    systemInstruction: systemInstruction,
+        if(attachments && attachments.length > 0) {
+            attachments.forEach(att => {
+                if (att.mimeType && (att.mimeType.startsWith('image/') || att.mimeType.startsWith('audio/'))) {
+                     const base64Data = att.content.includes('base64,') ? att.content.split('base64,')[1] : att.content;
+                     parts.push({ inlineData: { mimeType: att.mimeType, data: base64Data } });
+                } else {
+                    textContext += `\n--- ARQUIVO ANEXADO: ${att.name} ---\n${att.content}\n--- FIM DO ARQUIVO ---\n`;
                 }
             });
-
-            const result = await chat.sendMessage({ message: parts });
-            
-            const functionCalls = result.functionCalls;
-            if (functionCalls && functionCalls.length > 0) {
-                const call = functionCalls[0];
-                if (call.name === 'generate_image') {
-                    const prompt = (call.args as any).prompt;
-                    return await executeImageGeneration(prompt);
-                }
-            }
-
-            const responseText = result.text;
-            const codeBlockRegex = /```(html|css|javascript|js|ts|typescript|json)?\n([\s\S]*?)```/;
-            const match = responseText.match(codeBlockRegex);
-            
-            let codeData = undefined;
-            if (match) {
-                codeData = { lang: match[1] || 'html', content: match[2] };
-            }
-
-            // Extract Search Grounding Sources
-            let sources: { title: string, uri: string }[] = [];
-            
-            if (result.candidates && result.candidates[0].groundingMetadata?.groundingChunks) {
-                result.candidates[0].groundingMetadata.groundingChunks.forEach((chunk: any) => {
-                    if (chunk.web && chunk.web.uri) {
-                        sources.push({
-                            title: chunk.web.title || new URL(chunk.web.uri).hostname,
-                            uri: chunk.web.uri
-                        });
-                    }
-                });
-                // Remove duplicates
-                sources = sources.filter((v,i,a)=>a.findIndex(v2=>(v2.uri===v.uri))===i);
-            }
-
-            return { text: responseText, code: codeData, sources: sources };
         }
+
+        if (textContext) parts.push({ text: textContext + "\n" + message });
+        else parts.push({ text: message });
+
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const chatHistory = history.map(h => ({
+            role: h.role,
+            parts: [{ text: h.content }]
+        }));
+
+        const systemInstruction = `Você é o assistente JP Projects.
+        IMPORTANTE: ${getDateContext()}
+        Regras:
+        1. Se o usuário pedir código, forneça-o em blocos Markdown.
+        2. Se o usuário pedir uma imagem, use a ferramenta 'generate_image'.
+        3. Use o Google Search para informações recentes.`;
+
+        const useSearch = /(notícias|olimpíadas|paris 2024|clima|hoje|agora|atualmente|quem é|quem foi|fato)/i.test(message);
+
+        const chat = ai.chats.create({
+            model: 'gemini-3-flash-preview',
+            history: chatHistory,
+            config: {
+                tools: useSearch ? [{ googleSearch: {} }] : [{ functionDeclarations: [imageGenerationTool] }],
+                systemInstruction: systemInstruction,
+            }
+        });
+
+        const result = await chat.sendMessage({ message: parts });
+        
+        const functionCalls = result.functionCalls;
+        if (functionCalls && functionCalls.length > 0) {
+            const call = functionCalls[0];
+            if (call.name === 'generate_image') {
+                const prompt = (call.args as any).prompt;
+                return await executeImageGeneration(prompt);
+            }
+        }
+
+        const responseText = result.text;
+        const codeBlockRegex = /```(html|css|javascript|js|ts|typescript|json)?\n([\s\S]*?)```/;
+        const match = responseText.match(codeBlockRegex);
+        
+        let codeData = undefined;
+        if (match) {
+            codeData = { lang: match[1] || 'html', content: match[2] };
+        }
+
+        let sources: { title: string, uri: string }[] = [];
+        if (result.candidates && result.candidates[0].groundingMetadata?.groundingChunks) {
+            result.candidates[0].groundingMetadata.groundingChunks.forEach((chunk: any) => {
+                if (chunk.web && chunk.web.uri) {
+                    sources.push({
+                        title: chunk.web.title || new URL(chunk.web.uri).hostname,
+                        uri: chunk.web.uri
+                    });
+                }
+            });
+            sources = sources.filter((v,i,a)=>a.findIndex(v2=>(v2.uri===v.uri))===i);
+        }
+
+        return { text: responseText, code: codeData, sources: sources };
     } catch (error: any) {
         console.error("Erro no chat IA:", error);
-        
-        const isRateLimit = error.message?.includes('429') || error.status === 429;
-        if (isRateLimit) {
-             return { text: "⚠️ **Muitas Requisições**\nEstamos recebendo muitas solicitações no momento. Por favor, aguarde alguns segundos e tente novamente." };
-        }
-
-        if (error.message && error.message.includes('API key')) {
-             return { text: "⚠️ Erro de Configuração: Sua chave de API do Google parece inválida ou vazia." };
-        }
-        return { text: "Desculpe, ocorreu um erro na comunicação com a IA." };
+        return { text: "Ocorreu um erro na comunicação com a IA. Verifique sua chave de API." };
     }
 };
