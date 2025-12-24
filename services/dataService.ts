@@ -177,7 +177,6 @@ export const api = {
     if (updates.bio) dbUpdates.bio = updates.bio;
     if (updates.avatar) dbUpdates.avatar = updates.avatar;
     if (updates.coverImage) dbUpdates.cover_image = updates.coverImage;
-    // Skills would need array handling if implemented in UI
 
     const { error } = await supabase.from('profiles').update(dbUpdates).eq('id', userId);
     return !error;
@@ -186,7 +185,6 @@ export const api = {
   // --- TEAM MANAGEMENT ---
   createTeam: async (name: string, description: string, ownerId: string) => {
       try {
-          // 1. Create Team
           const inviteCode = `JP-${name.substring(0,3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
           const { data: teamData, error: teamError } = await supabase
             .from('teams')
@@ -199,101 +197,36 @@ export const api = {
             .select()
             .single();
 
-          if (teamError || !teamData) {
-              console.error("Error creating team:", teamError);
-              return false;
-          }
+          if (teamError || !teamData) return false;
 
-          // 2. Add Owner as Member
-          // Tenta inserir com a role 'owner'. Se a coluna não existir, tenta sem a role.
-          let { error: memberError } = await supabase
-            .from('team_members')
-            .insert({
-                team_id: teamData.id,
-                user_id: ownerId,
-                role: 'owner'
-            });
-
-          // PGRST204: Could not find the 'role' column
-          if (memberError && memberError.code === 'PGRST204') {
-              console.warn("Schema warning: 'role' column missing in team_members. Inserting without role.");
-              const { error: retryError } = await supabase
-                .from('team_members')
-                .insert({
-                    team_id: teamData.id,
-                    user_id: ownerId
-                });
-              memberError = retryError;
-          }
-
-          if (memberError) {
-              console.error("Error adding owner:", memberError);
-              // Rollback: delete the created team to avoid orphans
-              await supabase.from('teams').delete().eq('id', teamData.id);
-              return false;
-          }
-
-          // 3. Create Default Groups for Kanban
-          const defaultGroups = [
-              { title: 'Desenvolvimento', color: '#00b4d8', team_id: teamData.id },
-              { title: 'Design & UX', color: '#a25ddc', team_id: teamData.id },
-              { title: 'Marketing', color: '#fdab3d', team_id: teamData.id }
-          ];
-          await supabase.from('task_groups').insert(defaultGroups);
+          await supabase.from('team_members').insert({
+              team_id: teamData.id,
+              user_id: ownerId,
+              role: 'owner'
+          });
 
           return true;
-      } catch (e) {
-          console.error("Exception creating team:", e);
-          return false;
-      }
+      } catch (e) { return false; }
   },
 
   joinTeam: async (inviteCode: string, userId: string) => {
       try {
-          // 1. Find Team
           const { data: teamData, error: teamError } = await supabase
             .from('teams')
             .select('id')
-            .ilike('invite_code', inviteCode) // Case insensitive check
+            .ilike('invite_code', inviteCode)
             .single();
 
-          if (teamError || !teamData) {
-              console.error("Team not found or invalid code");
-              return false;
-          }
+          if (teamError || !teamData) return false;
 
-          // 2. Add Member (Constraint ensures no duplicates)
-          let { error: memberError } = await supabase
-            .from('team_members')
-            .insert({
-                team_id: teamData.id,
-                user_id: userId,
-                role: 'member'
-            });
+          const { error } = await supabase.from('team_members').insert({
+              team_id: teamData.id,
+              user_id: userId,
+              role: 'member'
+          });
 
-          // PGRST204 Fallback
-          if (memberError && memberError.code === 'PGRST204') {
-             const { error: retryError } = await supabase
-                .from('team_members')
-                .insert({
-                    team_id: teamData.id,
-                    user_id: userId
-                });
-             memberError = retryError;
-          }
-
-          if (memberError) {
-              // Ignore duplicate key error (already joined)
-              if (memberError.code === '23505') return true; 
-              console.error("Error joining team:", memberError);
-              return false;
-          }
-
-          return true;
-      } catch (e) {
-          console.error("Exception joining team:", e);
-          return false;
-      }
+          return !error;
+      } catch (e) { return false; }
   },
 
   updateTeam: async (teamId: string, updates: Partial<Team>) => {
@@ -313,13 +246,24 @@ export const api = {
           color: color
       }).select().single();
       
-      if(error) console.error("Error creating group:", error);
       return data ? { id: data.id, title: data.title, color: data.color, teamId: data.team_id } : null;
+  },
+
+  deleteTaskGroup: async (groupId: string) => {
+      const { error } = await supabase.from('task_groups').delete().eq('id', groupId);
+      return !error;
+  },
+
+  // --- STORAGE HELPERS ---
+  uploadFile: async (bucket: string, path: string, file: File) => {
+      const { data, error } = await supabase.storage.from(bucket).upload(path, file);
+      if (error) return null;
+      const { data: publicUrl } = supabase.storage.from(bucket).getPublicUrl(data.path);
+      return publicUrl.publicUrl;
   },
 
   // --- TASKS CRUD ---
   createTask: async (task: Task) => {
-    // Flatten Task object to DB snake_case structure
     const dbTask = {
       id: task.id,
       team_id: task.teamId,
@@ -339,7 +283,6 @@ export const api = {
     };
 
     const { error } = await supabase.from('tasks').insert(dbTask);
-    if (error) console.error("Create task error:", error);
     return !error;
   },
 
@@ -361,32 +304,6 @@ export const api = {
     };
 
     const { error } = await supabase.from('tasks').update(dbTask).eq('id', task.id);
-    
-    if (task.subtasks.length > 0) {
-        const subtasksDb = task.subtasks.map(s => ({
-            id: s.id,
-            task_id: task.id,
-            title: s.title,
-            completed: s.completed,
-            assignee_id: s.assigneeId,
-            start_date: s.startDate,
-            due_date: s.dueDate
-        }));
-        await supabase.from('subtasks').upsert(subtasksDb);
-    }
-
-    if (task.comments.length > 0) {
-        const commentsDb = task.comments.map(c => ({
-            id: c.id,
-            task_id: task.id,
-            user_id: c.userId,
-            text: c.text,
-            created_at: c.createdAt
-        }));
-        await supabase.from('comments').upsert(commentsDb);
-    }
-    
-    if (error) console.error("Update task error:", error);
     return !error;
   },
 
@@ -395,37 +312,25 @@ export const api = {
     return !error;
   },
 
-  // --- ROUTINES CRUD ---
   createRoutine: async (routine: RoutineTask) => {
     const dbRoutine = {
         id: routine.id,
         team_id: routine.teamId,
         title: routine.title,
         description: routine.description,
-        assignee_id: routine.assigneeId && routine.assigneeId.trim() !== '' ? routine.assigneeId : null, // Fix empty string UUID error
+        assignee_id: routine.assigneeId && routine.assigneeId.trim() !== '' ? routine.assigneeId : null,
         frequency: routine.frequency,
         days_of_week: routine.daysOfWeek,
         time: routine.time
     };
     const { error } = await supabase.from('routines').insert(dbRoutine);
-    if(error) console.error("Error creating routine:", error);
     return !error;
   },
 
   updateRoutine: async (routineId: string, updates: Partial<RoutineTask>) => {
       const dbUpdates: any = {};
       if(updates.lastCompletedDate) dbUpdates.last_completed_date = updates.lastCompletedDate;
-      
       const { error } = await supabase.from('routines').update(dbUpdates).eq('id', routineId);
-      if(error) console.error("Error updating routine:", error);
       return !error;
   }
 };
-
-export const INITIAL_USERS: User[] = [];
-export const INITIAL_TEAMS: Team[] = [];
-export const INITIAL_GROUPS: TaskGroup[] = [];
-export const INITIAL_TASKS: Task[] = [];
-export const INITIAL_COLUMNS: Column[] = [];
-export const INITIAL_ROUTINES: RoutineTask[] = [];
-export const INITIAL_NOTIFICATIONS: Notification[] = [];

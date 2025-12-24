@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Sparkles, Repeat, Sun, Moon, Image as ImageIcon, Briefcase, Link as LinkIcon, X, Filter, Save, Bell, Info, ShieldAlert, CheckCircle, Video, FolderPlus } from 'lucide-react';
+import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Sparkles, Repeat, Sun, Moon, Image as ImageIcon, Briefcase, Link as LinkIcon, X, Filter, Save, Bell, Info, ShieldAlert, CheckCircle, Video, FolderPlus, Building2 } from 'lucide-react';
 import { Avatar } from './components/Avatar';
 import { Modal } from './components/Modal';
 import { TaskDetail } from './components/TaskDetail';
@@ -12,13 +12,11 @@ import { RoutineTasksView } from './components/RoutineTasksView';
 import { AIAssistantView } from './components/AIAssistantView';
 import { MeetingRoomView } from './components/MeetingRoomView';
 import { TeamView } from './components/TeamView';
-import { ProfileView } from './components/ProfileView'; // Import New Profile
+import { ProfileView } from './components/ProfileView'; 
 import { Task, User, Column, Status, Team, TaskGroup, RoutineTask, Notification } from './types';
 import { api } from './services/dataService'; 
 import { supabase } from './services/supabaseClient';
 
-// Components
-// SMALLER ICONS AND PADDING
 const SidebarItem = ({ icon: Icon, label, active, onClick, collapsed }: any) => (
   <button
     onClick={onClick}
@@ -60,7 +58,6 @@ const TaskCard: React.FC<{ task: Task; user?: User; onClick: () => void; onDragS
         {task.title}
       </h3>
       
-      {/* Progress Bar */}
       <div className="w-full bg-gray-100 dark:bg-gray-700 h-1.5 rounded-full mt-2 mb-2 overflow-hidden">
         <div 
             className={`h-full rounded-full transition-all duration-500 ${task.progress === 100 ? 'bg-teal-500' : 'bg-[#00b4d8]'}`} 
@@ -90,7 +87,6 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true); 
   
-  // Data State
   const [currentTeamId, setCurrentTeamId] = useState<string | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -102,36 +98,30 @@ export default function App() {
   
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
-  const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false); // Modal for New Project (Group)
+  const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [preSelectedGroupId, setPreSelectedGroupId] = useState<string | null>(null);
   const [isTeamSelectorOpen, setIsTeamSelectorOpen] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
   
-  // Notification UI State
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  
-  // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMyTasks, setFilterMyTasks] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null); 
-  const [hasTeams, setHasTeams] = useState<boolean>(true); // Assume true initially
+  const [hasTeams, setHasTeams] = useState<boolean>(true);
 
-  // Derived state
   const currentTeam = teams.find(t => t.id === currentTeamId) || (teams.length > 0 ? teams[0] : null);
   const currentGroups = taskGroups.filter(g => g.teamId === currentTeamId);
 
-  // --- Session Check ---
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setIsAuthenticated(!!session);
       if(session?.user) {
-          // Temporarily set a shell user until profile loads
            setCurrentUser({
                id: session.user.id,
                name: session.user.user_metadata.name || session.user.email?.split('@')[0] || 'User',
                email: session.user.email || '',
-               role: 'Loading...',
+               role: 'Membro',
                team: ''
            });
       }
@@ -144,26 +134,13 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // --- Data Loading Wrapper ---
   const loadData = useCallback(async () => {
         setIsLoadingData(true);
         const data = await api.fetchProjectData(currentTeamId);
         
         if (data) {
-          // Check if user has ANY teams. If teams array is empty, we must trigger onboarding.
           if (data.teams.length === 0) {
               setHasTeams(false);
-              // Still set user info if available from auth even if no teams
-              const { data: { session } } = await supabase.auth.getSession();
-              if (session) {
-                 setCurrentUser({
-                     id: session.user.id,
-                     name: session.user.user_metadata.name || session.user.email?.split('@')[0] || 'User',
-                     email: session.user.email || '',
-                     role: 'Novo Membro',
-                     team: ''
-                 });
-              }
           } else {
               setHasTeams(true);
               setUsers(data.users);
@@ -174,14 +151,12 @@ export default function App() {
               setRoutines(data.routines);
               setNotifications(data.notifications);
               
-              // Resolve Current User from fetched profiles
               const { data: { session } } = await supabase.auth.getSession();
               if (session) {
                   const foundUser = data.users.find((u: User) => u.id === session.user.id);
                   if (foundUser) setCurrentUser(foundUser);
               }
 
-              // Set active Team
               if (!currentTeamId && data.teams.length > 0) {
                   setCurrentTeamId(data.teams[0].id);
               }
@@ -190,7 +165,6 @@ export default function App() {
         setIsLoadingData(false);
   }, [currentTeamId]);
 
-  // Trigger Load
   useEffect(() => {
     if (isAuthenticated) {
       loadData();
@@ -200,11 +174,10 @@ export default function App() {
   const handleLogout = async () => {
       await supabase.auth.signOut();
       setIsAuthenticated(false);
-      setHasTeams(true); // Reset state
+      setHasTeams(true);
       setCurrentTeamId(null);
   };
 
-  // Toggle Dark Mode
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark');
@@ -213,26 +186,18 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  // Filter Logic
   const filteredTasks = useMemo(() => {
     if (!currentUser) return [];
     return tasks.filter(t => {
-      // Team Filter
       if (t.teamId !== currentTeamId) return false;
-      
-      // My Tasks Filter
       if (filterMyTasks && t.assigneeId !== currentUser.id) return false;
-
-      // Search
       const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             t.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
       if (!matchesSearch) return false;
-
       return true;
     });
   }, [tasks, currentTeamId, searchQuery, filterMyTasks, currentUser]);
 
-  // Notification Helper
   const addNotification = (title: string, message: string, type: Notification['type'], userId: string = currentUser?.id || '0', taskId?: string) => {
       const newNote: Notification = {
           id: crypto.randomUUID(),
@@ -247,22 +212,14 @@ export default function App() {
       setNotifications(prev => [newNote, ...prev]);
   };
 
-  // --- Task CRUD Wrappers (Optimistic updates handled here) ---
   const handleUpdateTask = async (updatedTask: Task) => {
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
     if (selectedTask && selectedTask.id === updatedTask.id) setSelectedTask(updatedTask);
     await api.updateTask(updatedTask);
   };
 
-  const handleRequestApproval = (taskId: string, approverId: string) => {
-      const task = tasks.find(t => t.id === taskId);
-      if (!task || !currentUser) return;
-      const updatedTask = { ...task, approvalStatus: 'pending' as const, approverId };
-      handleUpdateTask(updatedTask);
-      addNotification('Aprovação Solicitada', `${currentUser.name} solicitou sua aprovação`, 'approval', approverId, taskId);
-  };
-
   const handleDeleteTask = async (taskId: string) => {
+    if(!confirm('Excluir esta tarefa?')) return;
     setTasks(prev => prev.filter(t => t.id !== taskId));
     setSelectedTask(null);
     await api.deleteTask(taskId);
@@ -299,7 +256,6 @@ export default function App() {
     await api.createTask(newTask);
   };
 
-  // --- Project (Group) Create ---
   const handleCreateProject = async (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
       if(!currentTeamId) return;
@@ -311,18 +267,27 @@ export default function App() {
       if(newGroup) {
           setTaskGroups([...taskGroups, {id: newGroup.id, title: newGroup.title, color: newGroup.color, teamId: newGroup.teamId}]);
           setIsNewProjectModalOpen(false);
-          addNotification('Projeto Criado', `Projeto "${title}" criado com sucesso.`, 'success');
+          addNotification('Projeto Criado', `Projeto "${title}" criado.`, 'success');
       }
   };
 
-  // --- Kanban Drag & Drop ---
+  const handleDeleteProject = async (groupId: string) => {
+      if(!confirm('Excluir este projeto e todas as suas tarefas?')) return;
+      const success = await api.deleteTaskGroup(groupId);
+      if(success) {
+          setTaskGroups(prev => prev.filter(g => g.id !== groupId));
+          setTasks(prev => prev.filter(t => t.groupId !== groupId));
+          addNotification('Projeto Excluído', 'O projeto foi removido.', 'info');
+      }
+  };
+
   const handleDragStart = (e: React.DragEvent, task: Task) => {
       e.dataTransfer.setData('taskId', task.id);
       e.dataTransfer.effectAllowed = 'move';
   };
 
   const handleDragOver = (e: React.DragEvent) => {
-      e.preventDefault(); // Necessary to allow dropping
+      e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
   };
 
@@ -330,70 +295,35 @@ export default function App() {
       e.preventDefault();
       const taskId = e.dataTransfer.getData('taskId');
       const task = tasks.find(t => t.id === taskId);
-      
       if(task && task.status !== statusId) {
-          // Optimistic update
           const updatedTask = { ...task, status: statusId };
           setTasks(prev => prev.map(t => t.id === taskId ? updatedTask : t));
-          
-          // API Call
           api.updateTask(updatedTask);
-          
-          // Optional: Add notification toast
-          // addNotification('Tarefa Movida', `${task.title} movida para ${statusId}`, 'info');
       }
   };
 
-
-  // --- Views ---
   const renderBoard = () => (
     <div className="flex h-full gap-6 overflow-x-auto pb-4 items-start snap-x">
       {columns.map(column => {
         const columnTasks = filteredTasks.filter(t => t.status === column.id);
         return (
-          <div 
-            key={column.id} 
-            className="min-w-[300px] w-[300px] flex flex-col snap-center shrink-0"
-            onDragOver={handleDragOver}
-            onDrop={(e) => handleDrop(e, column.id)}
-          >
+          <div key={column.id} className="min-w-[300px] w-[300px] flex flex-col snap-center shrink-0" onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, column.id)}>
             <div className={`flex items-center justify-between p-3 rounded-t-xl ${column.color} dark:bg-[#1e293b] border-b-2 border-[#00b4d8]`}>
               <h3 className="font-bold text-gray-700 dark:text-gray-200 text-sm">{column.title}</h3>
-              <span className="bg-white/50 dark:bg-black/30 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded text-xs font-bold">
-                {columnTasks.length}
-              </span>
+              <span className="bg-white/50 dark:bg-black/30 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded text-xs font-bold">{columnTasks.length}</span>
             </div>
-            <div className={`p-3 space-y-3 bg-gray-50 dark:bg-[#0f172a] border-x border-b border-gray-200 dark:border-gray-700 rounded-b-xl h-full min-h-[150px] transition-colors ${columnTasks.length === 0 ? 'opacity-80' : ''}`}>
+            <div className={`p-3 space-y-3 bg-gray-50 dark:bg-[#0f172a] border-x border-b border-gray-200 dark:border-gray-700 rounded-b-xl h-full min-h-[150px]`}>
               {columnTasks.map(task => (
-                <TaskCard 
-                  key={task.id} 
-                  task={task} 
-                  user={users.find(u => u.id === task.assigneeId)}
-                  onClick={() => setSelectedTask(task)} 
-                  onDragStart={handleDragStart}
-                />
+                <TaskCard key={task.id} task={task} user={users.find(u => u.id === task.assigneeId)} onClick={() => setSelectedTask(task)} onDragStart={handleDragStart} />
               ))}
-              {columnTasks.length === 0 && (
-                  <div className="h-full flex items-center justify-center text-gray-400 text-xs py-10 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-lg">
-                      Arraste itens aqui
-                  </div>
-              )}
             </div>
           </div>
         );
       })}
-       {/* Add Column Button (Simplified) */}
-      <button className="min-w-[300px] h-[150px] border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl flex flex-col items-center justify-center text-gray-400 hover:border-[#00b4d8] hover:text-[#00b4d8] transition-all">
-        <Plus size={32} />
-      </button>
     </div>
   );
 
-  // --- Main Render Flow ---
-
-  if (!isAuthenticated) {
-    return <LoginView onLogin={() => setIsAuthenticated(true)} />;
-  }
+  if (!isAuthenticated) return <LoginView onLogin={() => setIsAuthenticated(true)} />;
 
   if (isLoadingData) {
       return (
@@ -404,44 +334,49 @@ export default function App() {
       );
   }
 
-  // FORCE TEAM ONBOARDING IF NO TEAMS
-  if (!hasTeams && currentUser) {
-      return <TeamOnboarding currentUser={currentUser} onComplete={() => loadData()} />;
-  }
+  if (!hasTeams && currentUser) return <TeamOnboarding currentUser={currentUser} onComplete={() => loadData()} />;
 
   return (
     <div className={`flex h-screen bg-gray-50 dark:bg-[#0f172a] text-gray-900 dark:text-gray-100`}>
-      <aside 
-        className={`${isSidebarCollapsed ? 'w-16' : 'w-56'} bg-white dark:bg-[#1e293b] border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 ease-in-out relative shadow-sm z-30`}
-      >
-        <button 
-            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-            className="absolute -right-3 top-8 bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-gray-600 rounded-full p-1 shadow-md text-gray-500 hover:text-[#00b4d8] z-10"
-        >
+      <aside className={`${isSidebarCollapsed ? 'w-16' : 'w-56'} bg-white dark:bg-[#1e293b] border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 relative z-30 shadow-sm`}>
+        <button onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} className="absolute -right-3 top-8 bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-gray-600 rounded-full p-1 shadow-md text-gray-500 hover:text-[#00b4d8] z-10">
             {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
 
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 relative h-16 flex items-center justify-center">
-          <button 
-            onClick={() => setIsTeamSelectorOpen(!isTeamSelectorOpen)}
-            className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'} p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors`}
-          >
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 relative">
+          <button onClick={() => setIsTeamSelectorOpen(!isTeamSelectorOpen)} className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'} p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors`}>
              <div className="flex items-center gap-2">
                 <div className="w-8 h-8 bg-[#00b4d8] rounded-lg flex-shrink-0 flex items-center justify-center text-white font-bold text-xs shadow-sm">
                   {currentTeam?.name.substring(0, 2).toUpperCase() || 'JP'}
                 </div>
                 {!isSidebarCollapsed && (
                     <div className="text-left overflow-hidden">
-                        <span className="block text-[10px] text-gray-500 dark:text-gray-400 font-semibold uppercase whitespace-nowrap">Time</span>
+                        <span className="block text-[10px] text-gray-500 dark:text-gray-400 font-semibold uppercase">Time Atual</span>
                         <span className="block text-xs font-bold text-gray-800 dark:text-white truncate w-24">{currentTeam?.name || 'Selecione'}</span>
                     </div>
                 )}
              </div>
              {!isSidebarCollapsed && <ChevronDown size={14} className="text-gray-500" />}
           </button>
+          
+          {/* Team Switcher Dropdown */}
+          {isTeamSelectorOpen && !isSidebarCollapsed && (
+              <div className="absolute top-full left-0 w-full bg-white dark:bg-[#1b263b] shadow-xl border border-gray-100 dark:border-gray-700 z-50 rounded-b-xl py-2 mt-[-10px] animate-fade-in">
+                  <div className="px-3 py-1 mb-1 border-b border-gray-50 dark:border-gray-700">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase">Seus Times</span>
+                  </div>
+                  {teams.map(t => (
+                      <button key={t.id} onClick={() => { setCurrentTeamId(t.id); setIsTeamSelectorOpen(false); }} className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-[#0d1b2a] flex items-center gap-2 ${currentTeamId === t.id ? 'text-[#00b4d8] font-bold' : 'text-gray-600 dark:text-gray-300'}`}>
+                          <Building2 size={14} /> <span className="truncate">{t.name}</span>
+                      </button>
+                  ))}
+                  <div className="p-2 mt-2 border-t border-gray-50 dark:border-gray-700">
+                    <button onClick={() => setHasTeams(false)} className="w-full text-xs text-center text-[#00b4d8] hover:underline font-bold">+ Novo Time</button>
+                  </div>
+              </div>
+          )}
         </div>
         
-        {/* Navigation Items */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-hidden">
           <SidebarItem icon={List} label="Projetos (Lista)" active={activeView === 'list'} onClick={() => setActiveView('list')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Columns} label="Quadro Kanban" active={activeView === 'board'} onClick={() => setActiveView('board')} collapsed={isSidebarCollapsed} />
@@ -457,14 +392,9 @@ export default function App() {
           <SidebarItem icon={Users} label="Membros" active={activeView === 'team'} onClick={() => setActiveView('team')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Settings} label="Meu Perfil" active={activeView === 'profile'} onClick={() => setActiveView('profile')} collapsed={isSidebarCollapsed} />
           
-           {/* Add Project Button */}
            <div className="mt-4 px-2">
-               <button 
-                  onClick={() => setIsNewProjectModalOpen(true)}
-                  className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-start gap-2'} border border-dashed border-gray-400 text-gray-500 hover:text-indigo-500 hover:border-indigo-500 p-2 rounded-lg transition-colors text-xs font-bold`}
-               >
-                   <FolderPlus size={16} />
-                   {!isSidebarCollapsed && "Novo Projeto"}
+               <button onClick={() => setIsNewProjectModalOpen(true)} className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-start gap-2'} border border-dashed border-gray-400 text-gray-500 hover:text-indigo-500 hover:border-indigo-500 p-2 rounded-lg transition-colors text-xs font-bold`}>
+                   <FolderPlus size={16} /> {!isSidebarCollapsed && "Novo Projeto"}
                </button>
            </div>
         </nav>
@@ -479,9 +409,7 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <main className="flex-1 flex flex-col overflow-hidden bg-gray-50 dark:bg-[#0f172a] transition-colors relative">
-        {/* Header */}
         {activeView !== 'meeting' && (
         <header className="h-16 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 bg-white dark:bg-[#1e293b] shrink-0 z-20 shadow-sm relative">
            <h2 className="text-xl font-bold text-gray-800 dark:text-white whitespace-nowrap">
@@ -504,12 +432,6 @@ export default function App() {
                      <Bell size={20} />
                      {notifications.filter(n => !n.read).length > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white dark:border-[#1e293b]"></span>}
                  </button>
-                 {isNotificationsOpen && (
-                     <div className="absolute top-full right-0 mt-2 w-80 bg-white dark:bg-[#1e293b] rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 z-50 animate-fade-in-up">
-                         <div className="p-3 border-b border-gray-100 dark:border-gray-700 font-bold text-sm">Notificações</div>
-                         <div className="max-h-80 overflow-y-auto p-2 text-xs text-gray-500">{notifications.length === 0 ? 'Nada por aqui.' : 'Notificações...'}</div>
-                     </div>
-                 )}
              </div>
              <div className="border-l border-gray-200 dark:border-gray-700 pl-4 cursor-pointer" onClick={() => setActiveView('profile')}>
                 <Avatar src={currentUser?.avatar} alt={currentUser?.name || '?'} />
@@ -518,9 +440,8 @@ export default function App() {
         </header>
         )}
 
-        {/* Dynamic View Content */}
         <div className={`flex-1 overflow-auto ${activeView === 'meeting' ? 'p-0' : 'p-6'}`}>
-           {activeView === 'list' && <ProjectListView tasks={filteredTasks} taskGroups={currentGroups} users={users} onTaskClick={setSelectedTask} onAddTask={(groupId) => { setPreSelectedGroupId(groupId); setIsNewTaskModalOpen(true); }} onUpdateTask={handleUpdateTask} />}
+           {activeView === 'list' && <ProjectListView tasks={filteredTasks} taskGroups={currentGroups} users={users} onTaskClick={setSelectedTask} onAddTask={(groupId) => { setPreSelectedGroupId(groupId); setIsNewTaskModalOpen(true); }} onUpdateTask={handleUpdateTask} onDeleteProject={handleDeleteProject} />}
            {activeView === 'board' && renderBoard()}
            {activeView === 'gantt' && <GanttView tasks={filteredTasks} users={users} onTaskClick={setSelectedTask} />}
            {activeView === 'dashboard' && <DashboardView tasks={tasks.filter(t => t.teamId === currentTeamId)} users={users} />}
@@ -532,9 +453,8 @@ export default function App() {
         </div>
       </main>
 
-      {/* Task Modals */}
       <Modal isOpen={!!selectedTask} onClose={() => setSelectedTask(null)} title="Detalhes da Tarefa">
-        {selectedTask && currentUser && <TaskDetail task={selectedTask} users={users} columns={columns} currentUser={currentUser} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} onRequestApproval={handleRequestApproval} />}
+        {selectedTask && currentUser && <TaskDetail task={selectedTask} users={users} columns={columns} currentUser={currentUser} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} onRequestApproval={() => {}} />}
       </Modal>
 
       <Modal isOpen={isNewTaskModalOpen} onClose={() => setIsNewTaskModalOpen(false)} title="Criar Nova Tarefa" maxWidth="max-w-md">
@@ -548,17 +468,13 @@ export default function App() {
         </form>
       </Modal>
 
-      {/* New Project Modal */}
       <Modal isOpen={isNewProjectModalOpen} onClose={() => setIsNewProjectModalOpen(false)} title="Novo Projeto" maxWidth="max-w-md">
         <form onSubmit={handleCreateProject} className="space-y-4">
+            <div><label className="block text-sm font-medium mb-1">Nome do Projeto</label><input name="title" required placeholder="Ex: Campanha de Marketing" className="w-full px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-white" /></div>
             <div>
-                <label className="block text-sm font-medium mb-1">Nome do Projeto</label>
-                <input name="title" required placeholder="Ex: Campanha de Marketing 2025" className="w-full px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 dark:border-gray-700 dark:text-white" />
-            </div>
-            <div>
-                <label className="block text-sm font-medium mb-1">Cor de Identificação</label>
+                <label className="block text-sm font-medium mb-1">Cor</label>
                 <div className="flex gap-2">
-                    {['#00b4d8', '#a25ddc', '#fdab3d', '#ff5c8d', '#48cae4', '#20c997'].map(color => (
+                    {['#00b4d8', '#a25ddc', '#fdab3d', '#ff5c8d', '#20c997'].map(color => (
                         <label key={color} className="cursor-pointer">
                             <input type="radio" name="color" value={color} className="peer sr-only" defaultChecked={color === '#00b4d8'} />
                             <div className="w-8 h-8 rounded-full peer-checked:ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 peer-checked:scale-110 transition-all" style={{backgroundColor: color}}></div>
