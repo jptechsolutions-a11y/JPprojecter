@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { User } from '../types';
 import { Avatar } from './Avatar';
-import { Mail, Briefcase, MapPin, Shield, Star, Code, Edit2, Save, X, Camera, Loader2 } from 'lucide-react';
+import { Mail, Briefcase, MapPin, Shield, Star, Code, Edit2, Save, X, Camera, Loader2, Plus } from 'lucide-react';
 import { api } from '../services/dataService';
 
 interface ProfileViewProps {
@@ -11,6 +11,7 @@ interface ProfileViewProps {
 export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [newSkill, setNewSkill] = useState('');
   
   // Local state for editing
   const [formData, setFormData] = useState({
@@ -18,7 +19,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser }) => {
       role: currentUser.role,
       bio: currentUser.bio || '',
       avatar: currentUser.avatar,
-      coverImage: currentUser.coverImage
+      coverImage: currentUser.coverImage,
+      skills: currentUser.skills || []
   });
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -35,11 +37,28 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser }) => {
       }
   };
 
+  const addSkill = () => {
+    if (newSkill.trim() && !formData.skills.includes(newSkill.trim())) {
+        setFormData(prev => ({
+            ...prev,
+            skills: [...prev.skills, newSkill.trim()]
+        }));
+        setNewSkill('');
+    }
+  };
+
+  const removeSkill = (skillToRemove: string) => {
+    setFormData(prev => ({
+        ...prev,
+        skills: prev.skills.filter(s => s !== skillToRemove)
+    }));
+  };
+
   const handleSave = async () => {
       setIsLoading(true);
       const success = await api.updateUser(currentUser.id, formData);
       if (success) {
-          // Update local currentUser object reference simply for immediate UI feedback if parent doesn't reload immediately
+          // Update local currentUser object reference simply for immediate UI feedback
           Object.assign(currentUser, formData);
           setIsEditing(false);
       } else {
@@ -54,7 +73,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser }) => {
           role: currentUser.role,
           bio: currentUser.bio || '',
           avatar: currentUser.avatar,
-          coverImage: currentUser.coverImage
+          coverImage: currentUser.coverImage,
+          skills: currentUser.skills || []
       });
       setIsEditing(false);
   };
@@ -77,8 +97,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser }) => {
         )}
       </div>
 
-      <div className="bg-white dark:bg-[#1e293b] rounded-b-2xl shadow-sm border border-gray-200 dark:border-gray-700 px-8 pb-8 -mt-16 relative mb-8">
-        <div className="flex flex-col md:flex-row justify-between items-end md:items-center">
+      <div className="bg-white dark:bg-[#1e293b] rounded-b-2xl shadow-sm border border-gray-200 dark:border-gray-700 px-8 pb-8 -mt-16 relative mb-8 transition-colors">
+        <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4">
             <div className="flex flex-col md:flex-row items-center gap-6">
                 <div className="relative group">
                     <Avatar src={formData.avatar} alt={formData.name} size="xl" className="w-32 h-32 border-4 border-white dark:border-[#1e293b] shadow-lg" />
@@ -150,45 +170,66 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser }) => {
             {/* Left Column: Info */}
             <div className="space-y-6">
                 <div className="bg-gray-50 dark:bg-[#0f172a] p-5 rounded-xl border border-gray-100 dark:border-gray-700">
-                    <h3 className="font-bold text-gray-800 dark:text-white mb-4">Sobre</h3>
-                    <div className="space-y-3 text-sm text-gray-600 dark:text-gray-400">
-                        <div className="flex items-center gap-3">
-                            <Mail size={16} className="text-indigo-500" />
-                            <span>{currentUser.email}</span>
+                    <h3 className="font-bold text-gray-800 dark:text-white mb-4 uppercase text-xs tracking-wider">Sobre</h3>
+                    <div className="space-y-3 text-sm text-gray-600 dark:text-gray-400 overflow-hidden">
+                        <div className="flex items-center gap-3 overflow-hidden">
+                            <Mail size={16} className="text-indigo-500 shrink-0" />
+                            <span className="truncate" title={currentUser.email}>{currentUser.email}</span>
                         </div>
                         <div className="flex items-center gap-3">
-                            <Briefcase size={16} className="text-indigo-500" />
-                            <span>{formData.role}</span>
+                            <Briefcase size={16} className="text-indigo-500 shrink-0" />
+                            <span className="truncate">{formData.role}</span>
                         </div>
                         <div className="flex items-center gap-3">
-                            <MapPin size={16} className="text-indigo-500" />
+                            <MapPin size={16} className="text-indigo-500 shrink-0" />
                             <span>São Paulo, Brasil</span>
                         </div>
                         <div className="flex items-center gap-3">
-                            <Shield size={16} className="text-indigo-500" />
+                            <Shield size={16} className="text-indigo-500 shrink-0" />
                             <span>Nível: Admin</span>
                         </div>
                     </div>
                 </div>
 
                 <div className="bg-gray-50 dark:bg-[#0f172a] p-5 rounded-xl border border-gray-100 dark:border-gray-700">
-                     <h3 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
+                     <h3 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2 uppercase text-xs tracking-wider">
                          <Code size={16} /> Skills
                      </h3>
+                     
+                     {isEditing && (
+                        <div className="mb-4 flex gap-2">
+                             <input 
+                                value={newSkill}
+                                onChange={(e) => setNewSkill(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addSkill())}
+                                className="flex-1 text-xs p-2 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-600 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500"
+                                placeholder="Add skill..."
+                             />
+                             <button onClick={addSkill} className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"><Plus size={14}/></button>
+                        </div>
+                     )}
+
                      <div className="flex flex-wrap gap-2">
-                         {['React', 'TypeScript', 'Node.js', 'UI/UX', 'Scrum'].map(skill => (
-                             <span key={skill} className="px-3 py-1 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-600 rounded-full text-xs font-medium text-gray-600 dark:text-gray-300">
-                                 {skill}
-                             </span>
-                         ))}
+                         {formData.skills.length > 0 ? formData.skills.map(skill => (
+                             <div key={skill} className="group relative">
+                                 <span className="px-3 py-1 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-600 rounded-full text-[11px] font-medium text-gray-600 dark:text-gray-300 flex items-center gap-1">
+                                     {skill}
+                                     {isEditing && (
+                                         <button onClick={() => removeSkill(skill)} className="hover:text-red-500"><X size={10} /></button>
+                                     )}
+                                 </span>
+                             </div>
+                         )) : (
+                            <span className="text-xs text-gray-400 italic">Nenhuma habilidade listada.</span>
+                         )}
                      </div>
                 </div>
             </div>
 
             {/* Right Column: Activity / Bio */}
             <div className="md:col-span-2 space-y-6">
-                <div className="bg-white dark:bg-[#1e293b] p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-                    <h3 className="font-bold text-gray-800 dark:text-white mb-3">Bio</h3>
+                <div className="bg-white dark:bg-[#1e293b] p-6 rounded-xl border border-gray-200 dark:border-gray-700 transition-colors">
+                    <h3 className="font-bold text-gray-800 dark:text-white mb-3 uppercase text-xs tracking-wider">Bio</h3>
                     {isEditing ? (
                         <textarea 
                             value={formData.bio}
@@ -203,19 +244,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ currentUser }) => {
                     )}
                 </div>
 
-                <div className="bg-white dark:bg-[#1e293b] p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-                    <h3 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
+                <div className="bg-white dark:bg-[#1e293b] p-6 rounded-xl border border-gray-200 dark:border-gray-700 transition-colors">
+                    <h3 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2 uppercase text-xs tracking-wider">
                         <Star size={16} className="text-yellow-500" /> Conquistas Recentes
                     </h3>
                     <div className="space-y-4">
-                        <div className="flex items-start gap-4 p-3 bg-gray-50 dark:bg-[#0f172a] rounded-lg">
+                        <div className="flex items-start gap-4 p-3 bg-gray-50 dark:bg-[#0f172a] rounded-lg transition-colors">
                             <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-full flex items-center justify-center font-bold">🚀</div>
                             <div>
                                 <h4 className="font-bold text-gray-800 dark:text-white text-sm">Entregou o Projeto Alpha</h4>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">Finalizou todas as tarefas críticas antes do prazo.</p>
                             </div>
                         </div>
-                        <div className="flex items-start gap-4 p-3 bg-gray-50 dark:bg-[#0f172a] rounded-lg">
+                        <div className="flex items-start gap-4 p-3 bg-gray-50 dark:bg-[#0f172a] rounded-lg transition-colors">
                             <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 text-purple-600 rounded-full flex items-center justify-center font-bold">🔥</div>
                             <div>
                                 <h4 className="font-bold text-gray-800 dark:text-white text-sm">10 Dias de Ofensiva</h4>

@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { User, Team } from '../types';
 import { Avatar } from './Avatar';
-import { Mail, Copy, RefreshCw, UserPlus, Check, Hash, Link as LinkIcon, Shield, Trash2, MoreVertical, Plus, Send, Edit2, Camera } from 'lucide-react';
+import { Mail, Copy, RefreshCw, UserPlus, Check, Hash, Link as LinkIcon, Shield, Trash2, MoreVertical, Plus, Send, Edit2, Camera, Code } from 'lucide-react';
 import { Modal } from './Modal';
 import { api } from '../services/dataService';
 
@@ -74,7 +74,7 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam }) => {
     return (
         <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
             {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-[#1b263b] p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-[#1b263b] p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 transition-colors">
                 <div className="flex items-center gap-4">
                     {/* Team Logo */}
                     <div className="relative group w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border border-gray-200 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
@@ -143,23 +143,34 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam }) => {
                         </div>
                         
                         <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-1">{member.name}</h3>
-                        <p className="text-indigo-600 dark:text-indigo-400 text-sm font-medium mb-3">{member.role}</p>
+                        <p className="text-indigo-600 dark:text-indigo-400 text-sm font-medium mb-4">{member.role}</p>
                         
-                        <div className="flex gap-2 mb-4 justify-center flex-wrap">
-                            {member.skills?.slice(0, 3).map((skill, i) => (
-                                <span key={i} className="text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700">
-                                    {skill}
-                                </span>
-                            ))}
+                        {/* Skills Display */}
+                        <div className="w-full mb-6">
+                            <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+                                <Code size={12} /> Habilidades
+                            </div>
+                            <div className="flex flex-wrap gap-1.5 justify-center min-h-[50px]">
+                                {member.skills && member.skills.length > 0 ? member.skills.slice(0, 5).map((skill, i) => (
+                                    <span key={i} className="px-2 py-0.5 bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded text-[10px] border border-gray-100 dark:border-gray-700 whitespace-nowrap">
+                                        {skill}
+                                    </span>
+                                )) : (
+                                    <span className="text-[10px] text-gray-400 italic">Sem habilidades listadas</span>
+                                )}
+                                {member.skills && member.skills.length > 5 && (
+                                    <span className="text-[10px] text-gray-400">+{member.skills.length - 5}</span>
+                                )}
+                            </div>
                         </div>
 
-                        <div className="w-full pt-4 border-t border-gray-100 dark:border-gray-700 mt-auto flex justify-between items-center text-sm text-gray-500">
-                             <div className="flex items-center gap-1">
-                                 <Mail size={14} /> 
-                                 <span className="truncate max-w-[120px]" title={member.email}>{member.email}</span>
+                        <div className="w-full pt-4 border-t border-gray-100 dark:border-gray-700 mt-auto flex justify-between items-center text-[11px] text-gray-500">
+                             <div className="flex items-center gap-1 overflow-hidden max-w-[150px]">
+                                 <Mail size={12} className="shrink-0" /> 
+                                 <span className="truncate" title={member.email}>{member.email}</span>
                              </div>
                              {member.id === '1' && (
-                                 <span className="flex items-center gap-1 text-xs text-orange-500 bg-orange-50 dark:bg-orange-900/20 px-2 py-0.5 rounded border border-orange-100 dark:border-orange-800">
+                                 <span className="flex items-center gap-1 text-[10px] text-orange-500 bg-orange-50 dark:bg-orange-900/20 px-2 py-0.5 rounded border border-orange-100 dark:border-orange-800">
                                      <Shield size={10} /> Admin
                                  </span>
                              )}
@@ -170,7 +181,7 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam }) => {
                 {/* Add Placeholder Card */}
                 <button 
                     onClick={() => setIsInviteModalOpen(true)}
-                    className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-2xl p-6 flex flex-col items-center justify-center text-gray-400 hover:text-[#00b4d8] hover:border-[#00b4d8] hover:bg-gray-50 dark:hover:bg-[#1b263b] transition-all min-h-[250px] group"
+                    className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-2xl p-6 flex flex-col items-center justify-center text-gray-400 hover:text-[#00b4d8] hover:border-[#00b4d8] hover:bg-gray-50 dark:hover:bg-[#1b263b] transition-all min-h-[300px] group"
                 >
                     <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                         <Plus size={32} />
