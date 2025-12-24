@@ -82,7 +82,9 @@ export const api = {
         .select('team_id, role, teams(*)')
         .eq('user_id', currentUserId);
       
-      if (mErr || !memberships) return null;
+      if (mErr || !memberships || memberships.length === 0) {
+          return { users: [], teams: [], groups: [], columns: [], tasks: [], routines: [], notifications: [], meetings: [] };
+      }
 
       const userTeams = memberships
         .map((m: any) => m.teams)
@@ -96,46 +98,50 @@ export const api = {
              avatar: t.avatar
         }));
 
-      if (userTeams.length === 0) return { users: [], teams: [], groups: [], columns: [], tasks: [], routines: [], notifications: [], meetings: [] };
-
       let teamId = requestedTeamId;
       if (!teamId || !userTeams.find(t => t.id === teamId)) {
           teamId = userTeams[0].id;
       }
 
-      // Buscar todos os membros e seus perfis com o cargo correto do time
-      const { data: teamUsersData } = await supabase
-        .from('team_members')
-        .select('user_id, role, profiles(*)')
-        .eq('team_id', teamId);
-        
-      const mappedUsers = teamUsersData ? teamUsersData.map((tu: any) => {
+      // BUSCA PARALELA PARA MÁXIMA PERFORMANCE
+      const [
+          teamUsersRes,
+          groupsRes,
+          columnsRes,
+          tasksRes,
+          routinesRes,
+          notificationsRes,
+          meetingsRes
+      ] = await Promise.all([
+          supabase.from('team_members').select('user_id, role, profiles(*)').eq('team_id', teamId),
+          supabase.from('task_groups').select('*').eq('team_id', teamId),
+          supabase.from('columns').select('*').order('id', { ascending: true }),
+          supabase.from('tasks').select('*, subtasks(*), attachments(*), comments(*)').eq('team_id', teamId),
+          supabase.from('routines').select('*').eq('team_id', teamId),
+          supabase.from('notifications').select('*').eq('user_id', currentUserId).order('created_at', { ascending: false }),
+          supabase.from('meetings').select('*').eq('team_id', teamId).order('date', { ascending: true })
+      ]);
+
+      const mappedUsers = teamUsersRes.data ? teamUsersRes.data.map((tu: any) => {
           const user = mapUser(tu.profiles);
-          user.role = tu.role || user.role; // Sobrescreve com o cargo no time
+          user.role = tu.role || user.role;
           return user;
       }).filter(u => u.id) : [];
-
-      const activeTeam = userTeams.find(t => t.id === teamId);
-      if(activeTeam) activeTeam.members = mappedUsers.map(u => u.id);
-
-      const { data: groupsData } = await supabase.from('task_groups').select('*').eq('team_id', teamId);
-      const { data: columnsData } = await supabase.from('columns').select('*');
-      const { data: tasksData } = await supabase.from('tasks').select('*, subtasks(*), attachments(*), comments(*)').eq('team_id', teamId);
-      const { data: routinesData } = await supabase.from('routines').select('*').eq('team_id', teamId);
-      const { data: notificationsData } = await supabase.from('notifications').select('*').eq('user_id', currentUserId).order('created_at', { ascending: false });
-      const { data: meetingsData } = await supabase.from('meetings').select('*').eq('team_id', teamId).order('date', { ascending: true });
 
       return {
         users: mappedUsers,
         teams: userTeams,
-        groups: groupsData ? groupsData.map((g:any) => ({ id: g.id, title: g.title, color: g.color, teamId: g.team_id })) : [],
-        columns: columnsData ? columnsData.map((c:any) => ({ id: c.id, title: c.title, color: c.color })) : [],
-        tasks: tasksData ? tasksData.map(mapTask) : [],
-        routines: routinesData ? routinesData.map((r:any) => ({ ...r, teamId: r.team_id, assigneeId: r.assignee_id, daysOfWeek: r.days_of_week, lastCompletedDate: r.last_completed_date })) : [],
-        notifications: notificationsData ? notificationsData.map((n:any) => ({ ...n, userId: n.user_id, taskId: n.task_id })) : [],
-        meetings: meetingsData ? meetingsData.map(mapMeeting) : []
+        groups: groupsRes.data ? groupsRes.data.map((g:any) => ({ id: g.id, title: g.title, color: g.color, teamId: g.team_id })) : [],
+        columns: columnsRes.data ? columnsRes.data.map((c:any) => ({ id: c.id, title: c.title, color: c.color })) : [],
+        tasks: tasksRes.data ? tasksRes.data.map(mapTask) : [],
+        routines: routinesRes.data ? routinesRes.data.map((r:any) => ({ ...r, teamId: r.team_id, assigneeId: r.assignee_id, daysOfWeek: r.days_of_week, lastCompletedDate: r.last_completed_date })) : [],
+        notifications: notificationsRes.data ? notificationsRes.data.map((n:any) => ({ ...n, userId: n.user_id, taskId: n.task_id })) : [],
+        meetings: meetingsRes.data ? meetingsRes.data.map(mapMeeting) : []
       };
-    } catch (e) { return null; }
+    } catch (e) { 
+        console.error("Fetch Error:", e);
+        return null; 
+    }
   },
 
   updateUser: async (userId: string, updates: Partial<User>) => {
@@ -152,30 +158,16 @@ export const api = {
   },
 
   updateMemberRole: async (teamId: string, userId: string, newRole: string) => {
-    const { error } = await supabase
-        .from('team_members')
-        .update({ role: newRole })
-        .eq('team_id', teamId)
-        .eq('user_id', userId);
+    const { error } = await supabase.from('team_members').update({ role: newRole }).eq('team_id', teamId).eq('user_id', userId);
     return !error;
   },
 
   createTeam: async (name: string, description: string, ownerId: string) => {
       try {
           const inviteCode = `JP-${name.substring(0,3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
-          const { data: teamData, error: teamError } = await supabase
-            .from('teams')
-            .insert({ name, description, owner_id: ownerId, invite_code: inviteCode })
-            .select().single();
-
+          const { data: teamData, error: teamError } = await supabase.from('teams').insert({ name, description, owner_id: ownerId, invite_code: inviteCode }).select().single();
           if (teamError || !teamData) return false;
-
-          const { error: memberError } = await supabase
-            .from('team_members')
-            .insert({ team_id: teamData.id, user_id: ownerId, role: 'Admin' });
-          
-          if (memberError) return false;
-
+          await supabase.from('team_members').insert({ team_id: teamData.id, user_id: ownerId, role: 'Admin' });
           const defaultGroups = [
               { title: 'Desenvolvimento', color: '#00b4d8', team_id: teamData.id },
               { title: 'Design & UX', color: '#a25ddc', team_id: teamData.id }
@@ -195,22 +187,11 @@ export const api = {
 
   joinTeam: async (inviteCode: string, userId: string) => {
     try {
-      const { data: teamData, error: teamError } = await supabase
-        .from('teams')
-        .select('id')
-        .eq('invite_code', inviteCode.toUpperCase().trim())
-        .single();
-
+      const { data: teamData, error: teamError } = await supabase.from('teams').select('id').eq('invite_code', inviteCode.toUpperCase().trim()).single();
       if (teamError || !teamData) return false;
-
-      const { error: memberError } = await supabase
-        .from('team_members')
-        .insert({ team_id: teamData.id, user_id: userId, role: 'Membro' });
-
+      const { error: memberError } = await supabase.from('team_members').insert({ team_id: teamData.id, user_id: userId, role: 'Membro' });
       return !memberError;
-    } catch (e) {
-      return false;
-    }
+    } catch (e) { return false; }
   },
 
   createTaskGroup: async (teamId: string, title: string, color: string) => {
@@ -227,25 +208,10 @@ export const api = {
       const fileExt = file.name.split('.').pop();
       const fileName = `${taskId}/${Math.random()}.${fileExt}`;
       const filePath = `attachments/${fileName}`;
-
-      const { data, error: uploadError } = await supabase.storage
-        .from('attachments')
-        .upload(filePath, file);
-
+      const { error: uploadError } = await supabase.storage.from('attachments').upload(filePath, file);
       if (uploadError) return null;
-
       const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(filePath);
-
-      const { data: attData, error: dbError } = await supabase
-        .from('attachments')
-        .insert({
-            task_id: taskId,
-            name: file.name,
-            url: publicUrl,
-            type: file.type.includes('image') ? 'image' : 'file'
-        })
-        .select().single();
-
+      const { data: attData, error: dbError } = await supabase.from('attachments').insert({ task_id: taskId, name: file.name, url: publicUrl, type: file.type.includes('image') ? 'image' : 'file' }).select().single();
       return dbError ? null : attData;
   },
 

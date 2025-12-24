@@ -119,12 +119,14 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setIsAuthenticated(!!session);
       if(session?.user) {
+           // Carregamento IMEDIATO dos dados da sessão para evitar delay visual
            setCurrentUser({
                id: session.user.id,
-               name: session.user.user_metadata.name || session.user.email?.split('@')[0] || 'User',
+               name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
                email: session.user.email || '',
                role: 'Membro',
-               team: ''
+               team: '',
+               avatar: session.user.user_metadata?.avatar_url
            });
       }
     });
@@ -138,6 +140,15 @@ export default function App() {
               setTeams([]);
               setTasks([]);
               setCurrentUser(null);
+          } else {
+              setCurrentUser({
+                id: session.user.id,
+                name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+                email: session.user.email || '',
+                role: 'Membro',
+                team: '',
+                avatar: session.user.user_metadata?.avatar_url
+              });
           }
       }
     });
@@ -168,9 +179,10 @@ export default function App() {
               if (session) {
                   const foundUser = data.users.find((u: User) => u.id === session.user.id);
                   if (foundUser) {
-                      setCurrentUser(foundUser);
-                      // Injetar o teamId no usuário para componentes filhos
-                      (foundUser as any).teamId = currentTeamId || data.teams[0].id;
+                      // Injetar dados ricos do perfil mantendo o ID da sessão
+                      const enrichedUser = { ...foundUser };
+                      (enrichedUser as any).teamId = currentTeamId || data.teams[0].id;
+                      setCurrentUser(enrichedUser);
                   }
               }
 
@@ -271,8 +283,6 @@ export default function App() {
           setTasks(prev => prev.filter(t => t.groupId !== groupId));
       }
   };
-
-  // --- RENDERING LOGIC ---
 
   if (!isAuthenticated || isRecoveringPassword) {
     return <LoginView onLogin={() => setIsAuthenticated(true)} initialMode={isRecoveringPassword ? 'update-password' : 'login'} />;
