@@ -46,8 +46,9 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentUser, currentT
 
     const teamMembers = users.filter(u => currentTeam.members.includes(u.id));
 
-    // Permission Check
-    const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'Owner';
+    // Permission Check (Case Insensitive)
+    const currentRole = currentUser.role?.toLowerCase() || '';
+    const isAdmin = currentRole === 'admin' || currentRole === 'owner' || currentRole === 'gestor';
 
     useEffect(() => {
         if (!isAdmin && activeTab === 'roles') {
@@ -113,7 +114,7 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentUser, currentT
             setIsMemberEditModalOpen(false);
             if(onRolesUpdate) onRolesUpdate();
         } else {
-            alert('Erro ao atualizar cargo.');
+            alert('Erro ao atualizar cargo. Tente novamente.');
         }
         setIsUpdatingRole(false);
     };
@@ -125,6 +126,8 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentUser, currentT
             if(onRolesUpdate) onRolesUpdate();
             setIsRoleModalOpen(false);
             setNewCustomRole({ name: '', level: 1, color: '#6b7280' });
+        } else {
+            alert('Erro ao criar cargo. Verifique suas permissões de Admin.');
         }
     };
 
@@ -132,6 +135,7 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentUser, currentT
         if(!confirm('Tem certeza? Usuários com este cargo podem ficar sem permissão.')) return;
         const success = await api.deleteTeamRole(roleId);
         if(success && onRolesUpdate) onRolesUpdate();
+        else alert('Erro ao excluir cargo.');
     };
 
     return (
@@ -382,7 +386,7 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentUser, currentT
                  </form>
             </Modal>
 
-            {/* Invite Modal (Existing) */}
+            {/* Invite Modal */}
             <Modal isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} title="Convite de Equipe" maxWidth="max-w-lg">
                 <div className="space-y-6">
                     <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">

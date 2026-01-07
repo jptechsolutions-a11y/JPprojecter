@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2 } from 'lucide-react';
+import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2 } from 'lucide-react';
 import { Avatar } from './components/Avatar';
 import { Modal } from './components/Modal';
 import { TaskDetail } from './components/TaskDetail';
@@ -99,6 +99,7 @@ export default function App() {
   
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
+  const [isCreatingTask, setIsCreatingTask] = useState(false); // New state for loading
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [preSelectedGroupId, setPreSelectedGroupId] = useState<string | null>(null);
   const [isTeamSelectorOpen, setIsTeamSelectorOpen] = useState(false);
@@ -251,6 +252,9 @@ export default function App() {
 
   const handleCreateTask = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if(isCreatingTask) return; // Prevent double submission
+    setIsCreatingTask(true);
+
     const formData = new FormData(e.currentTarget);
     const title = formData.get('title') as string;
     const status = formData.get('status') as Status;
@@ -261,6 +265,7 @@ export default function App() {
     
     if (!actualGroupId && currentGroups.length === 0) {
         alert("Crie um projeto antes de criar tarefas!");
+        setIsCreatingTask(false);
         return;
     }
 
@@ -277,15 +282,20 @@ export default function App() {
       approvalStatus: 'none'
     };
     
+    // Optimistic Update
+    const oldTasks = [...tasks];
     setTasks([...tasks, newTask]);
     setIsNewTaskModalOpen(false);
+
     const success = await api.createTask(newTask);
-    if(success) loadData();
-    else {
+    if(success) {
+        await loadData();
+    } else {
         alert("Erro ao criar tarefa. Verifique permissões.");
         // Rollback optimistic update
-        setTasks(prev => prev.filter(t => t.id !== newTask.id));
+        setTasks(oldTasks);
     }
+    setIsCreatingTask(false);
   };
 
   const handleCreateProject = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -496,7 +506,9 @@ export default function App() {
           </div>
           <div className="pt-4 flex justify-end gap-3">
             <button type="button" onClick={() => setIsNewTaskModalOpen(false)} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white">Cancelar</button>
-            <button type="submit" className="px-4 py-2 bg-[#00b4d8] text-white rounded-lg font-bold hover:bg-[#0096c7] transition-colors">Criar</button>
+            <button type="submit" disabled={isCreatingTask} className="px-4 py-2 bg-[#00b4d8] text-white rounded-lg font-bold hover:bg-[#0096c7] transition-colors flex items-center gap-2">
+                {isCreatingTask ? <Loader2 size={16} className="animate-spin" /> : "Criar"}
+            </button>
           </div>
         </form>
       </Modal>

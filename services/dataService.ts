@@ -284,7 +284,7 @@ export const api = {
       description: task.description, status: task.status, priority: task.priority,
       assignee_id: task.assigneeId, start_date: task.startDate, due_date: task.dueDate
     });
-    if (error) console.error("Error creating task:", error);
+    if (error) console.error("SUPABASE ERROR CREATING TASK:", error);
     return !error;
   },
 
