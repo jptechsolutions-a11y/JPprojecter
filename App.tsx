@@ -137,7 +137,6 @@ export default function App() {
               setTasks([]);
               setCurrentUser(null);
           } else {
-              // Refresh user on auth change
               setCurrentUser({
                 id: session.user.id,
                 name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
@@ -220,6 +219,20 @@ export default function App() {
       return true;
     });
   }, [tasks, currentTeamId, searchQuery, filterMyTasks, currentUser]);
+
+  // Função otimizada para abrir detalhes
+  const handleTaskClick = async (task: Task) => {
+      // 1. Abre modal imediatamente com dados parciais
+      setSelectedTask(task);
+      
+      // 2. Busca detalhes completos (comentários/anexos) em segundo plano
+      const fullTask = await api.getTaskDetails(task.id);
+      if (fullTask) {
+          setSelectedTask(fullTask);
+          // Atualiza lista local para cachear
+          setTasks(prev => prev.map(t => t.id === fullTask.id ? fullTask : t));
+      }
+  };
 
   const handleUpdateTask = async (updatedTask: Task) => {
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
@@ -382,7 +395,7 @@ export default function App() {
         </header>
 
         <div className="flex-1 overflow-auto p-6 scrollbar-hide">
-           {activeView === 'list' && <ProjectListView tasks={filteredTasks} taskGroups={currentGroups} users={users} onTaskClick={setSelectedTask} onAddTask={(groupId) => { setPreSelectedGroupId(groupId); setIsNewTaskModalOpen(true); }} onUpdateTask={handleUpdateTask} onDeleteProject={handleDeleteProject} />}
+           {activeView === 'list' && <ProjectListView tasks={filteredTasks} taskGroups={currentGroups} users={users} onTaskClick={handleTaskClick} onAddTask={(groupId) => { setPreSelectedGroupId(groupId); setIsNewTaskModalOpen(true); }} onUpdateTask={handleUpdateTask} onDeleteProject={handleDeleteProject} />}
            {activeView === 'board' && (
                <div className="flex h-full gap-6 overflow-x-auto pb-4 items-start snap-x">
                  {columns.map(column => {
@@ -402,7 +415,7 @@ export default function App() {
                        </div>
                        <div className={`p-3 space-y-3 bg-gray-50 dark:bg-[#0f172a] border-x border-b border-gray-200 dark:border-gray-700 rounded-b-xl h-full min-h-[150px]`}>
                          {columnTasks.map(task => (
-                           <TaskCard key={task.id} task={task} user={users.find(u => u.id === task.assigneeId)} onClick={() => setSelectedTask(task)} onDragStart={(e, t) => e.dataTransfer.setData('taskId', t.id)} />
+                           <TaskCard key={task.id} task={task} user={users.find(u => u.id === task.assigneeId)} onClick={() => handleTaskClick(task)} onDragStart={(e, t) => e.dataTransfer.setData('taskId', t.id)} />
                          ))}
                        </div>
                      </div>
@@ -410,7 +423,7 @@ export default function App() {
                  })}
                </div>
            )}
-           {activeView === 'gantt' && <GanttView tasks={filteredTasks} users={users} onTaskClick={setSelectedTask} />}
+           {activeView === 'gantt' && <GanttView tasks={filteredTasks} users={users} onTaskClick={handleTaskClick} />}
            {activeView === 'dashboard' && <DashboardView tasks={tasks.filter(t => t.teamId === currentTeamId)} users={users} />}
            {activeView === 'routines' && <RoutineTasksView routines={routines} users={users} currentTeamId={currentTeamId || ''} onToggleRoutine={(id) => { api.updateRoutine(id, { lastCompletedDate: new Date().toISOString().split('T')[0] }).then(loadData); }} onAddRoutine={async (r) => { await api.createRoutine(r); loadData(); }} />}
            {activeView === 'profile' && currentUser && <ProfileView currentUser={currentUser} />}
