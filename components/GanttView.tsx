@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo } from 'react';
 import { Task, User } from '../types';
 import { Avatar } from './Avatar';
-import { ChevronRight, ChevronLeft, Calendar as CalendarIcon, SlidersHorizontal } from 'lucide-react';
+import { Calendar as CalendarIcon } from 'lucide-react';
 
 interface GanttViewProps {
   tasks: Task[];
@@ -23,6 +24,19 @@ export const GanttView: React.FC<GanttViewProps> = ({ tasks, users, onTaskClick 
   };
 
   const dayWidth = VIEW_CONFIG[viewMode].dayWidth;
+
+  const calculateEffectiveDateRange = (task: Task) => {
+      const startDates = task.subtasks?.map(s => s.startDate).filter(d => d).sort() || [];
+      const endDates = task.subtasks?.map(s => s.dueDate).filter(d => d).sort() || [];
+
+      // Start: Earliest subtask start or task start
+      const start = startDates.length > 0 ? startDates[0] : task.startDate;
+      
+      // End: Latest subtask end or task end
+      const end = endDates.length > 0 ? endDates[endDates.length - 1] : task.dueDate;
+
+      return { start, end };
+  };
 
   // 1. Calculate the timeline range
   const { minDate, totalDays, dates, groupedHeaders } = useMemo(() => {
@@ -48,11 +62,18 @@ export const GanttView: React.FC<GanttViewProps> = ({ tasks, users, onTaskClick 
     let maxTs = 0;
 
     tasks.forEach(t => {
-      const start = new Date(t.startDate || t.createdAt).getTime();
-      const end = new Date(t.dueDate || new Date(t.startDate || t.createdAt).getTime() + 86400000 * 3).getTime();
+      const { start: effectiveStart, end: effectiveEnd } = calculateEffectiveDateRange(t);
+      
+      const start = new Date(effectiveStart || t.createdAt).getTime();
+      const end = new Date(effectiveEnd || new Date(effectiveStart || t.createdAt).getTime() + 86400000 * 3).getTime();
+      
       if (start < minTs) minTs = start;
       if (end > maxTs) maxTs = end;
     });
+
+    // Validar se minTs e maxTs foram setados corretamente
+    if (minTs === Number.MAX_SAFE_INTEGER) minTs = Date.now();
+    if (maxTs === 0) maxTs = minTs + 86400000 * 7;
 
     let minDateObj = new Date(minTs);
     let maxDateObj = new Date(maxTs);
@@ -81,7 +102,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ tasks, users, onTaskClick 
     }
 
     const diffTime = Math.abs(maxDateObj.getTime() - minDateObj.getTime());
-    const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const totalDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 
     const dateArray = [];
     for (let i = 0; i <= totalDays; i++) {
@@ -166,7 +187,8 @@ export const GanttView: React.FC<GanttViewProps> = ({ tasks, users, onTaskClick 
       start.setHours(0,0,0,0);
       end.setHours(0,0,0,0);
       const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-      return days;
+      // Add 1 day to be inclusive of the end date visually
+      return days + 1;
   };
 
   const getStatusColor = (status: string) => {
@@ -242,6 +264,8 @@ export const GanttView: React.FC<GanttViewProps> = ({ tasks, users, onTaskClick 
              <div className="w-80 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0d1b2a] sticky left-0 z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
                 {tasks.map(task => {
                      const user = users.find(u => u.id === task.assigneeId);
+                     const { start, end } = calculateEffectiveDateRange(task);
+                     
                      return (
                         <div 
                             key={task.id} 
@@ -252,7 +276,11 @@ export const GanttView: React.FC<GanttViewProps> = ({ tasks, users, onTaskClick 
                                 <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{task.title}</p>
                                 <div className="flex items-center gap-2">
                                     <span className={`w-2 h-2 rounded-full ${task.priority === 'Alta' ? 'bg-red-500' : task.priority === 'Média' ? 'bg-yellow-500' : 'bg-teal-500'}`}></span>
-                                    <p className="text-xs text-gray-400 truncate">{task.status}</p>
+                                    <p className="text-xs text-gray-400 truncate">
+                                        {start ? new Date(start).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'}) : ''} 
+                                        {start && end ? ' - ' : ''}
+                                        {end ? new Date(end).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'}) : ''}
+                                    </p>
                                 </div>
                             </div>
                             {user && <Avatar src={user.avatar} alt={user.name} size="sm" />}
@@ -279,20 +307,20 @@ export const GanttView: React.FC<GanttViewProps> = ({ tasks, users, onTaskClick 
                 {/* Task Bars */}
                 <div className="relative pt-0">
                      {tasks.map((task, index) => {
-                         const left = getPosition(task.startDate, task.createdAt);
-                         const width = getDurationDays(task.startDate, task.dueDate, task.createdAt) * dayWidth;
+                         const { start, end } = calculateEffectiveDateRange(task);
+                         const left = getPosition(start, task.createdAt);
+                         const width = getDurationDays(start, end, task.createdAt) * dayWidth;
                          
                          return (
                             <div key={task.id} className="h-12 flex items-center relative border-b border-transparent"> 
                                 <div 
                                     onClick={() => onTaskClick(task)}
-                                    className={`absolute h-7 rounded-md shadow-sm border cursor-pointer transition-all flex items-center px-2 overflow-hidden whitespace-nowrap text-xs font-bold text-white ${getStatusColor(task.status)}`}
+                                    className={`absolute h-7 rounded-md shadow-sm border cursor-pointer transition-all flex items-center px-2 overflow-hidden whitespace-nowrap text-xs font-bold text-white ${getStatusColor(task.status)} group/bar`}
                                     style={{
                                         left: `${left}px`,
                                         width: `${width}px`,
                                         minWidth: '10px' // Ensure visibility
                                     }}
-                                    title={`${task.title} (${task.status})\n${new Date(task.startDate || '').toLocaleDateString()} - ${new Date(task.dueDate || '').toLocaleDateString()}`}
                                 >
                                     {width > 40 && (
                                         <div className="flex items-center gap-2 w-full">
@@ -300,6 +328,10 @@ export const GanttView: React.FC<GanttViewProps> = ({ tasks, users, onTaskClick 
                                             {width > 100 && <span className="ml-auto opacity-80 text-[10px]">{task.progress}%</span>}
                                         </div>
                                     )}
+                                    {/* Tooltip */}
+                                    <div className="absolute opacity-0 group-hover/bar:opacity-100 bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-black text-white text-[10px] rounded pointer-events-none whitespace-nowrap z-50">
+                                        {start ? new Date(start).toLocaleDateString() : 'N/A'} - {end ? new Date(end).toLocaleDateString() : 'N/A'}
+                                    </div>
                                 </div>
                             </div>
                          );
