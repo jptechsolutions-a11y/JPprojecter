@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
 import { Task, TaskGroup, User, Status, Priority } from '../types';
-import { ChevronDown, ChevronRight, Plus, Calendar, User as UserIcon, AlertCircle, CheckCircle2, Clock, CornerDownRight, ShieldCheck, ShieldAlert, Shield, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Calendar, User as UserIcon, AlertCircle, CheckCircle2, Clock, CornerDownRight, ShieldCheck, ShieldAlert, Shield, Trash2, FolderX } from 'lucide-react';
 import { Avatar } from './Avatar';
 
 interface ProjectListViewProps {
@@ -95,8 +96,12 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                 <h3 className="text-lg font-bold" style={{ color: group.color }}>{group.title}</h3>
                 <span className="text-gray-400 text-sm font-normal ml-2">{groupTasks.length} tarefas</span>
               </div>
-              <button onClick={() => onDeleteProject(group.id)} className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all" title="Excluir Projeto">
-                  <Trash2 size={16} />
+              <button 
+                  onClick={() => onDeleteProject(group.id)} 
+                  className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all flex items-center gap-2 text-xs font-bold" 
+                  title="Excluir Projeto"
+              >
+                  <Trash2 size={16} /> <span className="hidden sm:inline">Excluir Grupo</span>
               </button>
             </div>
 
