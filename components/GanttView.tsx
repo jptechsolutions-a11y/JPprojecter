@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Task, User } from '../types';
 import { Avatar } from './Avatar';
 import { Calendar as CalendarIcon } from 'lucide-react';
@@ -15,6 +15,10 @@ type ViewMode = 'day' | 'week' | 'month';
 export const GanttView: React.FC<GanttViewProps> = ({ tasks, users, onTaskClick }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('day');
   const headerHeight = 60;
+  
+  // Refs for scroll sync
+  const headerRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   
   // Configuration per view mode
   const VIEW_CONFIG = {
@@ -164,6 +168,13 @@ export const GanttView: React.FC<GanttViewProps> = ({ tasks, users, onTaskClick 
     return { minDate: minDateObj, totalDays, dates: dateArray, groupedHeaders: headers };
   }, [tasks, viewMode, dayWidth]);
 
+  // Handle Scroll Sync
+  const handleBodyScroll = () => {
+    if (headerRef.current && bodyRef.current) {
+        headerRef.current.scrollLeft = bodyRef.current.scrollLeft;
+    }
+  };
+
   // Helper: Get ISO Week Number
   function getWeekNumber(d: Date) {
     d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -233,7 +244,7 @@ export const GanttView: React.FC<GanttViewProps> = ({ tasks, users, onTaskClick 
             </div>
             
             {/* Timeline Header */}
-            <div className="flex-1 overflow-hidden relative">
+            <div ref={headerRef} className="flex-1 overflow-hidden relative">
                  <div className="flex">
                     {viewMode === 'day' ? (
                         dates.map((date, i) => (
@@ -259,7 +270,11 @@ export const GanttView: React.FC<GanttViewProps> = ({ tasks, users, onTaskClick 
         </div>
 
         {/* Body Container */}
-        <div className="flex flex-1 overflow-auto bg-gray-50/20 dark:bg-[#021221]">
+        <div 
+            ref={bodyRef} 
+            onScroll={handleBodyScroll}
+            className="flex flex-1 overflow-auto bg-gray-50/20 dark:bg-[#021221]"
+        >
              {/* Left Column (Task List) - Sticky */}
              <div className="w-80 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0d1b2a] sticky left-0 z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
                 {tasks.map(task => {
