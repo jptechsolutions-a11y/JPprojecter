@@ -40,8 +40,9 @@ const mapTask = (t: any): Task => ({
     completed: s.completed,
     assignee_id: s.assignee_id,
     due_date: s.due_date,
-    start_date: s.start_date
-  })).sort((a: any, b: any) => a.id.localeCompare(b.id)), // Sort by ID to keep order stable
+    start_date: s.start_date,
+    duration: s.duration || 1 // Default duration
+  })).sort((a: any, b: any) => a.id.localeCompare(b.id)),
   attachments: (t.attachments || []).map((a: any) => ({
     id: a.id,
     name: a.name,
@@ -277,9 +278,9 @@ export const api = {
       return !error;
   },
 
-  createTask: async (task: Task) => {
-    // Tenta criar a tarefa
-    const { data, error } = await supabase.from('tasks').insert({
+  createTask: async (task: Task, initialSubtasks: Partial<Subtask>[] = []) => {
+    // 1. Criar a tarefa principal
+    const { data: taskData, error: taskError } = await supabase.from('tasks').insert({
       team_id: task.teamId, 
       group_id: task.groupId, 
       title: task.title,
@@ -291,19 +292,34 @@ export const api = {
       due_date: task.dueDate
     }).select().single();
     
-    if (error) {
-        console.error("SUPABASE ERROR CREATING TASK:", error);
-        return { success: false, error };
+    if (taskError || !taskData) {
+        console.error("SUPABASE ERROR CREATING TASK:", taskError);
+        return { success: false, error: taskError };
     }
-    return { success: true, data: mapTask(data) };
+
+    // 2. Inserir subtarefas se houver
+    if (initialSubtasks.length > 0) {
+        const subtasksToInsert = initialSubtasks.map(s => ({
+            task_id: taskData.id,
+            title: s.title,
+            completed: false,
+            duration: s.duration || 1
+        }));
+        
+        await supabase.from('subtasks').insert(subtasksToInsert);
+    }
+
+    // 3. Retornar tarefa completa (pode precisar de um fetch ou construir manualmente)
+    // Para simplificar, vamos retornar o mapeamento da tarefa e assumir que o refresh da tela pegará as subs
+    return { success: true, data: mapTask(taskData) };
   },
 
   updateTask: async (task: Task) => {
-    // Note: This only updates the main task fields. Subtasks are handled separately via updateSubtask/createSubtask
     const { error } = await supabase.from('tasks').update({
       group_id: task.groupId, title: task.title, description: task.description,
       status: task.status, priority: task.priority, assignee_id: task.assigneeId,
-      progress: task.progress, approval_status: task.approvalStatus, approver_id: task.approverId
+      progress: task.progress, approval_status: task.approvalStatus, approver_id: task.approverId,
+      start_date: task.startDate, due_date: task.dueDate // Ensure dates are updated
     }).eq('id', task.id);
     return !error;
   },
@@ -314,15 +330,16 @@ export const api = {
   },
 
   // --- Subtask Management ---
-  createSubtask: async (taskId: string, title: string) => {
-      const { data, error } = await supabase.from('subtasks').insert({ task_id: taskId, title, completed: false }).select().single();
-      return { success: !error, data: data ? { id: data.id, title: data.title, completed: data.completed, assignee_id: data.assignee_id } : null };
+  createSubtask: async (taskId: string, title: string, duration: number = 1) => {
+      const { data, error } = await supabase.from('subtasks').insert({ task_id: taskId, title, completed: false, duration }).select().single();
+      return { success: !error, data: data ? { id: data.id, title: data.title, completed: data.completed, assignee_id: data.assignee_id, duration: data.duration } : null };
   },
 
   updateSubtask: async (subtaskId: string, updates: Partial<Subtask>) => {
       const dbUpdates: any = {};
       if (updates.title !== undefined) dbUpdates.title = updates.title;
       if (updates.completed !== undefined) dbUpdates.completed = updates.completed;
+      if (updates.duration !== undefined) dbUpdates.duration = updates.duration;
       
       const { error } = await supabase.from('subtasks').update(dbUpdates).eq('id', subtaskId);
       return !error;

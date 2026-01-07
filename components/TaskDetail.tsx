@@ -49,7 +49,8 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
             createdSubtasks.push({
                 id: res.data.id,
                 title: res.data.title,
-                completed: false
+                completed: false,
+                duration: res.data.duration || 1
             });
         }
     }
@@ -94,13 +95,19 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
         const newSubtask: Subtask = { 
             id: res.data.id, 
             title: res.data.title, 
-            completed: false 
+            completed: false,
+            duration: res.data.duration || 1
         };
         onUpdate({ ...task, subtasks: [...task.subtasks, newSubtask] });
     } else {
         // Fallback optimistic if offline (though API is online only)
         const tempId = crypto.randomUUID();
-        const newSubtask: Subtask = { id: tempId, title: "Nova sub-tarefa", completed: false };
+        const newSubtask: Subtask = { 
+            id: tempId, 
+            title: "Nova sub-tarefa", 
+            completed: false, 
+            duration: 1 
+        };
         onUpdate({ ...task, subtasks: [...task.subtasks, newSubtask] });
     }
   };

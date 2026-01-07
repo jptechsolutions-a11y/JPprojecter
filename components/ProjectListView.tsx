@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Task, TaskGroup, User, Status, Priority, Subtask } from '../types';
-import { ChevronDown, ChevronRight, Plus, Calendar, User as UserIcon, AlertCircle, CheckCircle2, Clock, CornerDownRight, ShieldCheck, ShieldAlert, Shield, Trash2, FolderX } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Calendar, User as UserIcon, AlertCircle, CheckCircle2, Clock, CornerDownRight, ShieldCheck, ShieldAlert, Shield, Trash2, FolderX, Info } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { api } from '../services/dataService';
 
@@ -25,7 +25,6 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
   onDeleteProject
 }) => {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
 
   const toggleGroup = (groupId: string) => {
     const newCollapsed = new Set(collapsedGroups);
@@ -37,60 +36,28 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
     setCollapsedGroups(newCollapsed);
   };
 
-  const toggleTask = (e: React.MouseEvent, taskId: string) => {
-    e.stopPropagation();
-    const newExpanded = new Set(expandedTasks);
-    if (newExpanded.has(taskId)) {
-      newExpanded.delete(taskId);
-    } else {
-      newExpanded.add(taskId);
-    }
-    setExpandedTasks(newExpanded);
-  };
-
-  const calculateProgress = (task: Task) => {
-      if (task.subtasks.length === 0) return task.progress;
-      const completed = task.subtasks.filter(s => s.completed).length;
-      return Math.round((completed / task.subtasks.length) * 100);
-  };
-
-  const handleAddSubtask = async (taskId: string) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
-    
-    // Create on API
-    const res = await api.createSubtask(taskId, 'Novo subelemento');
-    if (res.success && res.data) {
-        const newSubtask: Subtask = { 
-            id: res.data.id, 
-            title: res.data.title, 
-            completed: false 
-        };
-        onUpdateTask({ ...task, subtasks: [...task.subtasks, newSubtask] });
-    }
-  };
-
-  const handleSubtaskUpdate = async (taskId: string, subtaskId: string, updates: Partial<Subtask>) => {
-      const task = tasks.find(t => t.id === taskId);
-      if(!task) return;
-      
-      const updatedSubtasks = task.subtasks.map(s => s.id === subtaskId ? { ...s, ...updates } : s);
-      const completedCount = updatedSubtasks.filter(s => s.completed).length;
-      const newProgress = updatedSubtasks.length ? Math.round((completedCount / updatedSubtasks.length) * 100) : 0;
-      
-      onUpdateTask({ ...task, subtasks: updatedSubtasks, progress: newProgress });
-      
-      // Save to API
-      await api.updateSubtask(subtaskId, updates);
-  };
-
   const getStatusColor = (status: Status) => {
     switch (status) {
-      case 'Concluído': return 'bg-teal-500 text-white';
-      case 'Em Progresso': return 'bg-blue-400 text-white';
-      case 'Revisão': return 'bg-purple-400 text-white';
-      default: return 'bg-gray-400 text-white';
+      case 'Concluído': return 'bg-[#00c875]'; // Green
+      case 'Em Progresso': return 'bg-[#fdab3d]'; // Orange
+      case 'Revisão': return 'bg-[#a25ddc]'; // Purple
+      default: return 'bg-[#c4c4c4]'; // Gray
     }
+  };
+
+  const formatDateRange = (start?: string, end?: string) => {
+      if (!start) return '-';
+      const s = new Date(start);
+      const e = end ? new Date(end) : null;
+      
+      const sStr = s.toLocaleDateString('pt-BR', { month: 'short', day: 'numeric' });
+      if (!e) return sStr;
+      const eStr = e.toLocaleDateString('pt-BR', { month: 'short', day: 'numeric' });
+      return `${sStr} - ${eStr}`;
+  };
+
+  const calculateTotalDuration = (subtasks: Subtask[]) => {
+      return subtasks.reduce((acc, curr) => acc + (curr.duration || 1), 0);
   };
 
   return (
@@ -98,99 +65,104 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
       {taskGroups.map(group => {
         const groupTasks = tasks.filter(t => t.groupId === group.id);
         const isCollapsed = collapsedGroups.has(group.id);
-        const progressSum = groupTasks.reduce((acc, t) => acc + calculateProgress(t), 0);
-        const avgProgress = groupTasks.length ? Math.round(progressSum / groupTasks.length) : 0;
         
         return (
           <div key={group.id} className="flex flex-col animate-fade-in">
-            <div className="group sticky top-0 z-10 bg-gray-50 dark:bg-[#021221] pt-2 pb-2 flex items-center justify-between transition-colors">
+            {/* Group Header */}
+            <div className="group sticky top-0 z-10 bg-gray-50 dark:bg-[#021221] pt-2 pb-2 flex items-center justify-between transition-colors mb-2">
               <div className="flex items-center gap-2">
                 <button onClick={() => toggleGroup(group.id)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors" style={{ color: group.color }}>
                   {isCollapsed ? <ChevronRight size={20} /> : <ChevronDown size={20} />}
                 </button>
-                <h3 className="text-lg font-bold" style={{ color: group.color }}>{group.title}</h3>
+                <h3 className="text-xl font-bold" style={{ color: group.color }}>{group.title}</h3>
                 <span className="text-gray-400 text-sm font-normal ml-2">{groupTasks.length} tarefas</span>
               </div>
               <button 
                   onClick={() => onDeleteProject(group.id)} 
-                  className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all flex items-center gap-2 text-xs font-bold" 
+                  className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all flex items-center gap-2 text-xs font-bold" 
                   title="Excluir Projeto"
               >
-                  <Trash2 size={16} /> <span className="hidden sm:inline">Excluir Grupo</span>
+                  <Trash2 size={16} />
               </button>
             </div>
 
             {!isCollapsed && (
-              <div className="bg-white dark:bg-[#0d1b2a] rounded-lg shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
-                <div className="grid grid-cols-12 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-[#1b263b] text-[10px] font-bold text-gray-500 uppercase tracking-wider h-10 items-center">
-                  <div className="col-span-4 px-4 border-r border-gray-100 dark:border-gray-800 pl-10">Tarefa</div>
-                  <div className="col-span-2 text-center border-r border-gray-100 dark:border-gray-800">Equipe</div>
-                  <div className="col-span-2 text-center border-r border-gray-100 dark:border-gray-800">Status</div>
-                  <div className="col-span-2 text-center border-r border-gray-100 dark:border-gray-800">Progresso</div>
-                  <div className="col-span-2 text-center">Prioridade</div>
+              <div className="bg-white dark:bg-[#0f172a] rounded-lg shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+                {/* Table Header */}
+                <div className="grid grid-cols-12 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#1b263b]/50 text-xs text-gray-500 dark:text-gray-400 h-10 items-center">
+                  <div className="col-span-5 px-4 border-r border-gray-200 dark:border-gray-800 pl-10">Tarefa</div>
+                  <div className="col-span-2 text-center border-r border-gray-200 dark:border-gray-800">Status</div>
+                  <div className="col-span-2 text-center border-r border-gray-200 dark:border-gray-800 flex items-center justify-center gap-1">Timeline <Info size={10}/></div>
+                  <div className="col-span-1 text-center border-r border-gray-200 dark:border-gray-800">Duração</div>
+                  <div className="col-span-2 text-center">Esforço</div>
                 </div>
 
+                {/* Rows */}
                 {groupTasks.map(task => {
-                   const assignee = users.find(u => u.id === task.assigneeId);
-                   const supportUsers = users.filter(u => task.supportIds?.includes(u.id));
-                   const isExpanded = expandedTasks.has(task.id);
-                   const currentProgress = calculateProgress(task);
+                   const totalDuration = calculateTotalDuration(task.subtasks);
+                   const timelineWidth = Math.min(100, totalDuration * 5); // Visual hack for timeline pill width
 
                    return (
-                    <div key={task.id} className="flex flex-col border-b border-gray-100 dark:border-gray-800">
-                        <div onClick={() => onTaskClick(task)} className={`grid grid-cols-12 h-12 items-center cursor-pointer text-sm hover:bg-gray-50 dark:hover:bg-[#1b263b] transition-colors ${isExpanded ? 'bg-indigo-50/20 dark:bg-indigo-900/10' : ''}`}>
-                          <div className="col-span-4 px-4 h-full flex items-center relative border-r border-gray-100 dark:border-gray-800">
-                            <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: group.color }}></div>
-                            <button onClick={(e) => toggleTask(e, task.id)} className="mr-2 text-gray-400 p-1 hover:text-indigo-500">
-                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            </button>
-                            <span className="truncate font-medium">{task.title}</span>
-                          </div>
-                          <div className="col-span-2 flex justify-center -space-x-2 border-r border-gray-100 dark:border-gray-800">
-                            {assignee && <Avatar src={assignee.avatar} alt={assignee.name} size="sm" className="ring-2 ring-white dark:ring-[#0d1b2a]" />}
-                            {supportUsers.slice(0, 2).map(u => <Avatar key={u.id} src={u.avatar} alt={u.name} size="sm" className="ring-2 ring-white dark:ring-[#0d1b2a]" />)}
-                          </div>
-                          <div className="col-span-2 px-2 border-r border-gray-100 dark:border-gray-800">
-                            <div className={`w-full text-[10px] py-1 text-center rounded font-bold ${getStatusColor(task.status)}`}>{task.status}</div>
-                          </div>
-                          <div className="col-span-2 px-4 border-r border-gray-100 dark:border-gray-800">
-                             <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                                <div className="h-full bg-indigo-500" style={{width: `${currentProgress}%`}}></div>
-                             </div>
-                          </div>
-                          <div className="col-span-2 text-center text-[10px] font-bold">
-                             <span className={`${task.priority === 'Alta' ? 'text-red-500' : task.priority === 'Média' ? 'text-yellow-500' : 'text-teal-500'}`}>{task.priority}</span>
-                          </div>
-                        </div>
-                        {isExpanded && (
-                            <div className="bg-gray-50/50 dark:bg-black/10 pl-12 pr-4 py-2 text-xs space-y-2">
-                                {task.subtasks.map(sub => (
-                                    <div key={sub.id} className="flex items-center gap-3 group">
-                                        <input type="checkbox" checked={sub.completed} onChange={(e) => handleSubtaskUpdate(task.id, sub.id, { completed: e.target.checked })} className="rounded accent-[#00b4d8]" />
-                                        <input 
-                                            type="text" 
-                                            value={sub.title}
-                                            onChange={(e) => handleSubtaskUpdate(task.id, sub.id, { title: e.target.value })}
-                                            className={`bg-transparent border-b border-transparent focus:border-indigo-500 outline-none w-full transition-colors ${sub.completed ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}
-                                        />
-                                    </div>
-                                ))}
-                                <button onClick={() => handleAddSubtask(task.id)} className="text-[#00b4d8] font-bold hover:underline">+ Subtarefa</button>
+                    <div key={task.id} className="grid grid-cols-12 h-12 items-center hover:bg-gray-50 dark:hover:bg-[#1e293b] transition-colors border-b border-gray-100 dark:border-gray-800 cursor-pointer text-sm" onClick={() => onTaskClick(task)}>
+                        {/* Title Column */}
+                        <div className="col-span-5 px-4 h-full flex items-center relative border-r border-gray-100 dark:border-gray-800 overflow-hidden">
+                            <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: group.color }}></div>
+                            <div className="pl-4 flex flex-col justify-center min-w-0">
+                                <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{task.title}</span>
+                                {task.subtasks.length > 0 && (
+                                    <span className="text-[10px] text-gray-400 truncate">
+                                        {task.subtasks.length} subelementos
+                                    </span>
+                                )}
                             </div>
-                        )}
+                        </div>
+
+                        {/* Status Column */}
+                        <div className="col-span-2 px-2 border-r border-gray-100 dark:border-gray-800 flex items-center justify-center h-full">
+                            <div className={`w-full h-8 flex items-center justify-center text-white text-xs font-bold truncate ${getStatusColor(task.status)}`}>
+                                {task.status}
+                            </div>
+                        </div>
+
+                        {/* Timeline Column */}
+                        <div className="col-span-2 px-4 border-r border-gray-100 dark:border-gray-800 flex flex-col justify-center items-center h-full">
+                             <div className="w-full h-6 rounded-full bg-gray-200 dark:bg-gray-700 relative overflow-hidden flex items-center justify-center group/timeline">
+                                 <div 
+                                    className="absolute left-0 top-0 bottom-0 bg-[#00b4d8] opacity-70 rounded-full" 
+                                    style={{ width: `${timelineWidth}%` }}
+                                 ></div>
+                                 <span className="relative z-10 text-[10px] font-bold text-gray-700 dark:text-white px-2 truncate">
+                                     {formatDateRange(task.startDate, task.dueDate)}
+                                 </span>
+                             </div>
+                        </div>
+
+                        {/* Duration Column */}
+                        <div className="col-span-1 border-r border-gray-100 dark:border-gray-800 text-center text-gray-600 dark:text-gray-400 text-xs">
+                            {totalDuration} dias
+                        </div>
+
+                        {/* Effort Column */}
+                        <div className="col-span-2 flex items-center h-full">
+                             <div className="flex-1 h-full flex flex-col justify-center items-center border-r border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-black/20">
+                                 <span className="text-xs font-bold text-gray-500 dark:text-gray-400">Esforço previsto</span>
+                                 <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{totalDuration * 8} horas</span>
+                             </div>
+                             <div className="flex-1 h-full flex flex-col justify-center items-center">
+                                 <span className="text-xs font-bold text-gray-500 dark:text-gray-400">Esforço utilizado</span>
+                                 <span className="text-xs font-bold text-gray-800 dark:text-gray-200">-</span> 
+                             </div>
+                        </div>
                     </div>
                   );
                 })}
 
-                <div className="h-10 flex items-center px-10 group/add">
-                   <button onClick={() => onAddTask(group.id)} className="text-gray-400 hover:text-[#00b4d8] text-xs flex items-center gap-2 font-medium">
-                       <Plus size={14} /> Adicionar tarefa rápida
+                {/* Add Task Row */}
+                <div className="h-10 flex items-center px-4 group/add border-t border-gray-200 dark:border-gray-700">
+                   <div className="w-1.5 h-full mr-4" style={{ backgroundColor: group.color, opacity: 0.3 }}></div>
+                   <button onClick={() => onAddTask(group.id)} className="text-gray-400 hover:text-[#00b4d8] text-xs flex items-center gap-2 font-medium w-full h-full">
+                       <Plus size={14} /> Adicionar Item
                    </button>
-                </div>
-                
-                <div className="bg-gray-50 dark:bg-[#1b263b] h-8 flex items-center justify-between px-4 text-[10px] font-bold text-gray-400 uppercase">
-                   <span>Resumo: {groupTasks.length} itens</span>
-                   <span>{avgProgress}% completo</span>
                 </div>
               </div>
             )}

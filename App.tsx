@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2 } from 'lucide-react';
+import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2, Calendar as CalendarIcon, Clock, Trash2 } from 'lucide-react';
 import { Avatar } from './components/Avatar';
 import { Modal } from './components/Modal';
 import { TaskDetail } from './components/TaskDetail';
@@ -12,7 +12,7 @@ import { TeamOnboarding } from './components/TeamOnboarding';
 import { RoutineTasksView } from './components/RoutineTasksView';
 import { TeamView } from './components/TeamView';
 import { ProfileView } from './components/ProfileView'; 
-import { Task, User, Column, Status, Team, TaskGroup, RoutineTask, Notification, TeamRole } from './types';
+import { Task, User, Column, Status, Team, TaskGroup, RoutineTask, Notification, TeamRole, Subtask } from './types';
 import { api } from './services/dataService'; 
 import { supabase } from './services/supabaseClient';
 
@@ -107,6 +107,12 @@ export default function App() {
   
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMyTasks, setFilterMyTasks] = useState(false);
+
+  // New Task Form State
+  const [newTaskSubtasks, setNewTaskSubtasks] = useState<{title: string, duration: number}[]>([]);
+  const [newTaskSubTitle, setNewTaskSubTitle] = useState('');
+  const [newTaskSubDuration, setNewTaskSubDuration] = useState(1);
+  const [newTaskStartDate, setNewTaskStartDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null); 
   const [hasTeams, setHasTeams] = useState<boolean>(true);
@@ -250,9 +256,33 @@ export default function App() {
     await api.deleteTask(taskId);
   };
 
+  // --- Task Creation Logic ---
+
+  const handleAddSubtaskToForm = () => {
+      if (!newTaskSubTitle.trim()) return;
+      setNewTaskSubtasks([...newTaskSubtasks, { title: newTaskSubTitle, duration: newTaskSubDuration }]);
+      setNewTaskSubTitle('');
+      setNewTaskSubDuration(1);
+  };
+
+  const handleRemoveSubtaskFromForm = (index: number) => {
+      setNewTaskSubtasks(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const calculateEndDate = () => {
+      if (!newTaskStartDate) return '';
+      const totalDays = newTaskSubtasks.reduce((acc, curr) => acc + curr.duration, 0);
+      if (totalDays === 0) return newTaskStartDate;
+      
+      const start = new Date(newTaskStartDate);
+      const end = new Date(start);
+      end.setDate(end.getDate() + totalDays);
+      return end.toISOString().split('T')[0];
+  };
+
   const handleCreateTask = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if(isCreatingTask) return; // Prevent double submission
+    if(isCreatingTask) return;
     setIsCreatingTask(true);
 
     const formData = new FormData(e.currentTarget);
@@ -268,29 +298,38 @@ export default function App() {
         return;
     }
 
+    // Calcular data final com base no esforço
+    const calculatedDueDate = calculateEndDate();
+
     const tempId = crypto.randomUUID();
     const newTask: Task = {
-      id: tempId, // Temporary ID for UI
+      id: tempId, // Temporary ID
       groupId: actualGroupId, 
       title, 
       status, 
       description: '', 
       priority: 'Média',
-      startDate: new Date().toISOString().split('T')[0],
+      startDate: newTaskStartDate,
+      dueDate: calculatedDueDate,
       tags: [], subtasks: [], progress: 0, attachments: [], comments: [],
       createdAt: new Date().toISOString(), teamId: currentTeamId || '',
       approvalStatus: 'none'
     };
     
-    // We do NOT add to state immediately to prevent ID conflict issues if update fails
-    // Instead we wait for server response
+    // Create task WITH subtasks
+    const result = await api.createTask(newTask, newTaskSubtasks);
     
-    const result = await api.createTask(newTask);
     if(result.success && result.data) {
         setTasks([...tasks, result.data]);
         setIsNewTaskModalOpen(false);
+        // Reset Form
+        setNewTaskSubtasks([]);
+        setNewTaskSubTitle('');
+        setNewTaskSubDuration(1);
+        setNewTaskStartDate(new Date().toISOString().split('T')[0]);
+        loadData(); // Reload to ensure subtasks are fetched properly
     } else {
-        alert("Erro ao criar tarefa. Verifique se você tem permissão.");
+        alert("Erro ao criar tarefa.");
         console.error(result.error);
     }
     setIsCreatingTask(false);
@@ -481,31 +520,108 @@ export default function App() {
         {selectedTask && currentUser && <TaskDetail task={selectedTask} users={users} columns={columns} currentUser={currentUser} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} onRequestApproval={() => {}} />}
       </Modal>
 
-      {/* New Task Modal */}
-      <Modal isOpen={isNewTaskModalOpen} onClose={() => setIsNewTaskModalOpen(false)} title="Criar Nova Tarefa" maxWidth="max-w-md">
-        <form onSubmit={handleCreateTask} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1 dark:text-gray-300">Título</label>
-            <input name="title" required className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-[#1e293b] border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#00b4d8] outline-none" />
-          </div>
+      {/* New Task Modal Expanded */}
+      <Modal isOpen={isNewTaskModalOpen} onClose={() => setIsNewTaskModalOpen(false)} title="Criar Nova Tarefa" maxWidth="max-w-2xl">
+        <form onSubmit={handleCreateTask} className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
-            <div>
-                <label className="block text-sm font-medium mb-1 dark:text-gray-300">Status</label>
-                <select name="status" className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-[#1e293b] border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white outline-none">
-                    {columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                </select>
-            </div>
-            <div>
-                <label className="block text-sm font-medium mb-1 dark:text-gray-300">Grupo</label>
+              <div>
+                <label className="block text-sm font-bold mb-1 dark:text-gray-300">Título da Tarefa</label>
+                <input name="title" required className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-[#1e293b] border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#00b4d8] outline-none" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-1 dark:text-gray-300">Grupo / Projeto</label>
                 <select name="groupId" defaultValue={preSelectedGroupId || ''} className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-[#1e293b] border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white outline-none">
                     {currentGroups.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}
                 </select>
-            </div>
+              </div>
           </div>
-          <div className="pt-4 flex justify-end gap-3">
+
+          <div className="flex gap-4">
+             <div className="flex-1">
+                <label className="block text-sm font-bold mb-1 dark:text-gray-300 flex items-center gap-2"><CalendarIcon size={14} /> Data de Início</label>
+                <input 
+                    type="date" 
+                    value={newTaskStartDate} 
+                    onChange={(e) => setNewTaskStartDate(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-[#1e293b] border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white outline-none"
+                />
+             </div>
+             <div className="flex-1">
+                <label className="block text-sm font-bold mb-1 dark:text-gray-300">Status Inicial</label>
+                <select name="status" className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-[#1e293b] border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white outline-none">
+                    {columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                </select>
+             </div>
+          </div>
+
+          {/* Subtasks Section */}
+          <div className="bg-gray-50 dark:bg-[#0f172a] p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+              <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 flex items-center justify-between">
+                  <span>Subtarefas e Esforço</span>
+                  <span className="text-xs font-normal text-gray-500">Defina o esforço para calcular o prazo</span>
+              </h4>
+              
+              <div className="space-y-2 mb-3">
+                  {newTaskSubtasks.map((sub, idx) => (
+                      <div key={idx} className="flex items-center gap-3 bg-white dark:bg-[#1e293b] p-2 rounded-lg border border-gray-200 dark:border-gray-700">
+                          <span className="text-sm flex-1 font-medium">{sub.title}</span>
+                          <span className="text-xs bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 px-2 py-1 rounded">
+                              {sub.duration} dias
+                          </span>
+                          <button type="button" onClick={() => handleRemoveSubtaskFromForm(idx)} className="text-red-400 hover:text-red-500">
+                              <Trash2 size={14} />
+                          </button>
+                      </div>
+                  ))}
+                  {newTaskSubtasks.length === 0 && (
+                      <p className="text-xs text-gray-400 italic text-center py-2">Nenhuma subtarefa adicionada.</p>
+                  )}
+              </div>
+
+              <div className="flex gap-2 items-end">
+                  <div className="flex-1">
+                      <label className="text-[10px] text-gray-500 uppercase font-bold">Nome da Subtarefa</label>
+                      <input 
+                          value={newTaskSubTitle}
+                          onChange={(e) => setNewTaskSubTitle(e.target.value)}
+                          placeholder="Ex: Criar Wireframe"
+                          className="w-full px-3 py-1.5 text-sm border rounded bg-white dark:bg-[#1e293b] dark:border-gray-600"
+                      />
+                  </div>
+                  <div className="w-24">
+                      <label className="text-[10px] text-gray-500 uppercase font-bold">Duração (Dias)</label>
+                      <input 
+                          type="number"
+                          min="1"
+                          value={newTaskSubDuration}
+                          onChange={(e) => setNewTaskSubDuration(Number(e.target.value))}
+                          className="w-full px-3 py-1.5 text-sm border rounded bg-white dark:bg-[#1e293b] dark:border-gray-600"
+                      />
+                  </div>
+                  <button 
+                      type="button" 
+                      onClick={handleAddSubtaskToForm}
+                      className="px-3 py-1.5 bg-[#00b4d8] text-white rounded text-sm font-bold hover:bg-[#0096c7]"
+                  >
+                      Add
+                  </button>
+              </div>
+          </div>
+
+          {/* Auto Calculated Summary */}
+          <div className="flex items-center justify-between p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-100 dark:border-indigo-800">
+              <div className="flex items-center gap-2 text-indigo-800 dark:text-indigo-300 font-bold text-sm">
+                  <Clock size={16} /> Total Esforço: {newTaskSubtasks.reduce((acc, curr) => acc + curr.duration, 0)} dias
+              </div>
+              <div className="text-indigo-800 dark:text-indigo-300 font-bold text-sm">
+                  Previsão de Entrega: {new Date(calculateEndDate()).toLocaleDateString('pt-BR')}
+              </div>
+          </div>
+
+          <div className="pt-4 flex justify-end gap-3 border-t border-gray-100 dark:border-gray-700">
             <button type="button" onClick={() => setIsNewTaskModalOpen(false)} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white">Cancelar</button>
-            <button type="submit" disabled={isCreatingTask} className="px-4 py-2 bg-[#00b4d8] text-white rounded-lg font-bold hover:bg-[#0096c7] transition-colors flex items-center gap-2">
-                {isCreatingTask ? <Loader2 size={16} className="animate-spin" /> : "Criar"}
+            <button type="submit" disabled={isCreatingTask} className="px-6 py-2 bg-[#00b4d8] text-white rounded-lg font-bold hover:bg-[#0096c7] transition-colors flex items-center gap-2">
+                {isCreatingTask ? <Loader2 size={16} className="animate-spin" /> : "Criar Tarefa"}
             </button>
           </div>
         </form>

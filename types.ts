@@ -47,6 +47,7 @@ export interface Subtask {
   assigneeId?: string;
   dueDate?: string;
   startDate?: string;
+  duration: number; // Dias de esforço
 }
 
 export interface Attachment {
