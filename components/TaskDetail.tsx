@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { Task, User, Priority, Status, Subtask, Attachment, Comment, Column, ApprovalStatus } from '../types';
 import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2 } from 'lucide-react';
@@ -39,25 +40,77 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
   const handleAiSubtasks = async () => {
     setIsGeneratingSubs(true);
     const newSubtaskTitles = await generateSubtasks(task.title, task.description);
-    const newSubtasks: Subtask[] = newSubtaskTitles.map(title => ({
-      id: crypto.randomUUID(),
-      title,
-      completed: false
-    }));
-    onUpdate({ ...task, subtasks: [...task.subtasks, ...newSubtasks] });
+    
+    // Create subtasks one by one to ensure IDs
+    const createdSubtasks = [];
+    for (const title of newSubtaskTitles) {
+        const res = await api.createSubtask(task.id, title);
+        if (res.success && res.data) {
+            createdSubtasks.push({
+                id: res.data.id,
+                title: res.data.title,
+                completed: false
+            });
+        }
+    }
+    
+    if (createdSubtasks.length > 0) {
+        onUpdate({ ...task, subtasks: [...task.subtasks, ...createdSubtasks] });
+    }
     setIsGeneratingSubs(false);
   };
 
-  const toggleSubtask = (subtaskId: string) => {
-    const updatedSubtasks = task.subtasks.map(st => 
-      st.id === subtaskId ? { ...st, completed: !st.completed } : st
-    );
-    onUpdate({ ...task, subtasks: updatedSubtasks });
+  const toggleSubtask = async (subtaskId: string) => {
+    const subtask = task.subtasks.find(st => st.id === subtaskId);
+    if (subtask) {
+        const newCompleted = !subtask.completed;
+        // Optimistic update
+        const updatedSubtasks = task.subtasks.map(st => 
+          st.id === subtaskId ? { ...st, completed: newCompleted } : st
+        );
+        onUpdate({ ...task, subtasks: updatedSubtasks });
+        
+        // API call
+        await api.updateSubtask(subtaskId, { completed: newCompleted });
+    }
   };
 
-  const addSubtask = () => {
-    const newSubtask: Subtask = { id: crypto.randomUUID(), title: "Nova sub-tarefa", completed: false };
-    onUpdate({ ...task, subtasks: [...task.subtasks, newSubtask] });
+  const handleSubtaskTitleChange = (subtaskId: string, newTitle: string) => {
+      const updatedSubtasks = task.subtasks.map(st => 
+          st.id === subtaskId ? { ...st, title: newTitle } : st
+      );
+      onUpdate({ ...task, subtasks: updatedSubtasks });
+  };
+
+  const saveSubtaskTitle = async (subtaskId: string, newTitle: string) => {
+      await api.updateSubtask(subtaskId, { title: newTitle });
+  };
+
+  const addSubtask = async () => {
+    // 1. Create on server to get real ID
+    const res = await api.createSubtask(task.id, "Nova sub-tarefa");
+    
+    if (res.success && res.data) {
+        const newSubtask: Subtask = { 
+            id: res.data.id, 
+            title: res.data.title, 
+            completed: false 
+        };
+        onUpdate({ ...task, subtasks: [...task.subtasks, newSubtask] });
+    } else {
+        // Fallback optimistic if offline (though API is online only)
+        const tempId = crypto.randomUUID();
+        const newSubtask: Subtask = { id: tempId, title: "Nova sub-tarefa", completed: false };
+        onUpdate({ ...task, subtasks: [...task.subtasks, newSubtask] });
+    }
+  };
+
+  const deleteSubtask = async (subtaskId: string) => {
+      // Optimistic
+      const updatedSubtasks = task.subtasks.filter(st => st.id !== subtaskId);
+      onUpdate({ ...task, subtasks: updatedSubtasks });
+      // API
+      await api.deleteSubtask(subtaskId);
   };
 
   // --- Real Attachment Logic ---
@@ -224,13 +277,28 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
             </div>
             <div className="space-y-2">
               {task.subtasks.map(st => (
-                <div key={st.id} className="flex items-center gap-3">
-                  <input type="checkbox" checked={st.completed} onChange={() => toggleSubtask(st.id)} className="w-4 h-4 rounded border-gray-300" />
-                  <span className={`text-sm ${st.completed ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}>{st.title}</span>
+                <div key={st.id} className="flex items-center gap-3 group">
+                  <input 
+                    type="checkbox" 
+                    checked={st.completed} 
+                    onChange={() => toggleSubtask(st.id)} 
+                    className="w-4 h-4 rounded border-gray-300 cursor-pointer accent-indigo-600" 
+                  />
+                  <input 
+                    type="text"
+                    value={st.title}
+                    onChange={(e) => handleSubtaskTitleChange(st.id, e.target.value)}
+                    onBlur={(e) => saveSubtaskTitle(st.id, e.target.value)}
+                    onKeyDown={(e) => { if(e.key === 'Enter') { saveSubtaskTitle(st.id, e.currentTarget.value); e.currentTarget.blur(); } }}
+                    className={`flex-1 bg-transparent border-b border-transparent focus:border-indigo-500 outline-none text-sm transition-colors ${st.completed ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}
+                  />
+                  <button onClick={() => deleteSubtask(st.id)} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Trash2 size={14} />
+                  </button>
                 </div>
               ))}
             </div>
-            <button onClick={addSubtask} className="text-sm text-indigo-600 flex items-center gap-1 mt-2"><Plus size={14} /> Novo Item</button>
+            <button onClick={addSubtask} className="text-sm text-indigo-600 flex items-center gap-1 mt-2 hover:bg-indigo-50 px-2 py-1 rounded transition-colors"><Plus size={14} /> Novo Item</button>
           </div>
         </div>
       </div>

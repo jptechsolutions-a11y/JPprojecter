@@ -41,7 +41,7 @@ const mapTask = (t: any): Task => ({
     assignee_id: s.assignee_id,
     due_date: s.due_date,
     start_date: s.start_date
-  })),
+  })).sort((a: any, b: any) => a.id.localeCompare(b.id)), // Sort by ID to keep order stable
   attachments: (t.attachments || []).map((a: any) => ({
     id: a.id,
     name: a.name,
@@ -293,14 +293,13 @@ export const api = {
     
     if (error) {
         console.error("SUPABASE ERROR CREATING TASK:", error);
-        // Se o erro for FK, tentamos garantir as colunas de novo? 
-        // Não, já foi feito no fetch. Apenas retorne o erro.
         return { success: false, error };
     }
     return { success: true, data: mapTask(data) };
   },
 
   updateTask: async (task: Task) => {
+    // Note: This only updates the main task fields. Subtasks are handled separately via updateSubtask/createSubtask
     const { error } = await supabase.from('tasks').update({
       group_id: task.groupId, title: task.title, description: task.description,
       status: task.status, priority: task.priority, assignee_id: task.assigneeId,
@@ -312,6 +311,26 @@ export const api = {
   deleteTask: async (taskId: string) => {
     const { error } = await supabase.from('tasks').delete().eq('id', taskId);
     return !error;
+  },
+
+  // --- Subtask Management ---
+  createSubtask: async (taskId: string, title: string) => {
+      const { data, error } = await supabase.from('subtasks').insert({ task_id: taskId, title, completed: false }).select().single();
+      return { success: !error, data: data ? { id: data.id, title: data.title, completed: data.completed, assignee_id: data.assignee_id } : null };
+  },
+
+  updateSubtask: async (subtaskId: string, updates: Partial<Subtask>) => {
+      const dbUpdates: any = {};
+      if (updates.title !== undefined) dbUpdates.title = updates.title;
+      if (updates.completed !== undefined) dbUpdates.completed = updates.completed;
+      
+      const { error } = await supabase.from('subtasks').update(dbUpdates).eq('id', subtaskId);
+      return !error;
+  },
+
+  deleteSubtask: async (subtaskId: string) => {
+      const { error } = await supabase.from('subtasks').delete().eq('id', subtaskId);
+      return !error;
   },
 
   createRoutine: async (routine: RoutineTask) => {

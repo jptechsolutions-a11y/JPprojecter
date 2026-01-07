@@ -1,8 +1,9 @@
 
 import React, { useState } from 'react';
-import { Task, TaskGroup, User, Status, Priority } from '../types';
+import { Task, TaskGroup, User, Status, Priority, Subtask } from '../types';
 import { ChevronDown, ChevronRight, Plus, Calendar, User as UserIcon, AlertCircle, CheckCircle2, Clock, CornerDownRight, ShieldCheck, ShieldAlert, Shield, Trash2, FolderX } from 'lucide-react';
 import { Avatar } from './Avatar';
+import { api } from '../services/dataService';
 
 interface ProjectListViewProps {
   tasks: Task[];
@@ -53,20 +54,34 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
       return Math.round((completed / task.subtasks.length) * 100);
   };
 
-  const handleAddSubtask = (taskId: string) => {
+  const handleAddSubtask = async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
-    const newSubtask = { id: crypto.randomUUID(), title: 'Novo subelemento', completed: false, startDate: new Date().toISOString().split('T')[0] };
-    onUpdateTask({ ...task, subtasks: [...task.subtasks, newSubtask] });
+    
+    // Create on API
+    const res = await api.createSubtask(taskId, 'Novo subelemento');
+    if (res.success && res.data) {
+        const newSubtask: Subtask = { 
+            id: res.data.id, 
+            title: res.data.title, 
+            completed: false 
+        };
+        onUpdateTask({ ...task, subtasks: [...task.subtasks, newSubtask] });
+    }
   };
 
-  const handleSubtaskUpdate = (taskId: string, subtaskId: string, updates: any) => {
+  const handleSubtaskUpdate = async (taskId: string, subtaskId: string, updates: Partial<Subtask>) => {
       const task = tasks.find(t => t.id === taskId);
       if(!task) return;
+      
       const updatedSubtasks = task.subtasks.map(s => s.id === subtaskId ? { ...s, ...updates } : s);
       const completedCount = updatedSubtasks.filter(s => s.completed).length;
       const newProgress = updatedSubtasks.length ? Math.round((completedCount / updatedSubtasks.length) * 100) : 0;
+      
       onUpdateTask({ ...task, subtasks: updatedSubtasks, progress: newProgress });
+      
+      // Save to API
+      await api.updateSubtask(subtaskId, updates);
   };
 
   const getStatusColor = (status: Status) => {
@@ -150,9 +165,14 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                         {isExpanded && (
                             <div className="bg-gray-50/50 dark:bg-black/10 pl-12 pr-4 py-2 text-xs space-y-2">
                                 {task.subtasks.map(sub => (
-                                    <div key={sub.id} className="flex items-center gap-3">
+                                    <div key={sub.id} className="flex items-center gap-3 group">
                                         <input type="checkbox" checked={sub.completed} onChange={(e) => handleSubtaskUpdate(task.id, sub.id, { completed: e.target.checked })} className="rounded accent-[#00b4d8]" />
-                                        <span className={sub.completed ? 'line-through text-gray-400' : ''}>{sub.title}</span>
+                                        <input 
+                                            type="text" 
+                                            value={sub.title}
+                                            onChange={(e) => handleSubtaskUpdate(task.id, sub.id, { title: e.target.value })}
+                                            className={`bg-transparent border-b border-transparent focus:border-indigo-500 outline-none w-full transition-colors ${sub.completed ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}
+                                        />
                                     </div>
                                 ))}
                                 <button onClick={() => handleAddSubtask(task.id)} className="text-[#00b4d8] font-bold hover:underline">+ Subtarefa</button>
