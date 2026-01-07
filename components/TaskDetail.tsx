@@ -21,12 +21,8 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
   const [isGeneratingSubs, setIsGeneratingSubs] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [commentText, setCommentText] = useState('');
-  const [showMentions, setShowMentions] = useState(false);
-  const [showSupportSelector, setShowSupportSelector] = useState(false);
-  const [isSelectingApprover, setIsSelectingApprover] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const commentInputRef = useRef<HTMLTextAreaElement>(null);
 
   const priorities: Priority[] = ['Baixa', 'Média', 'Alta'];
 
@@ -76,15 +72,15 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
     }
   };
 
-  const handleSubtaskTitleChange = (subtaskId: string, newTitle: string) => {
+  const handleSubtaskChange = async (subtaskId: string, field: keyof Subtask, value: any) => {
+      // Optimistic
       const updatedSubtasks = task.subtasks.map(st => 
-          st.id === subtaskId ? { ...st, title: newTitle } : st
+          st.id === subtaskId ? { ...st, [field]: value } : st
       );
       onUpdate({ ...task, subtasks: updatedSubtasks });
-  };
-
-  const saveSubtaskTitle = async (subtaskId: string, newTitle: string) => {
-      await api.updateSubtask(subtaskId, { title: newTitle });
+      
+      // API
+      await api.updateSubtask(subtaskId, { [field]: value });
   };
 
   const addSubtask = async () => {
@@ -100,7 +96,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
         };
         onUpdate({ ...task, subtasks: [...task.subtasks, newSubtask] });
     } else {
-        // Fallback optimistic if offline (though API is online only)
+        // Fallback optimistic
         const tempId = crypto.randomUUID();
         const newSubtask: Subtask = { 
             id: tempId, 
@@ -279,33 +275,57 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
 
           <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl border dark:border-gray-700">
              <div className="flex items-center justify-between mb-3">
-              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"><CheckSquare size={16} /> Checklist</label>
+              <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"><CheckSquare size={16} /> Atividades & Datas</label>
               <button onClick={handleAiSubtasks} disabled={isGeneratingSubs} className="text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded">IA Sugerir</button>
             </div>
             <div className="space-y-2">
+              <div className="grid grid-cols-12 gap-2 text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 px-2">
+                  <div className="col-span-1"></div>
+                  <div className="col-span-5">Atividade</div>
+                  <div className="col-span-3">Início</div>
+                  <div className="col-span-3">Fim</div>
+              </div>
               {task.subtasks.map(st => (
-                <div key={st.id} className="flex items-center gap-3 group">
-                  <input 
-                    type="checkbox" 
-                    checked={st.completed} 
-                    onChange={() => toggleSubtask(st.id)} 
-                    className="w-4 h-4 rounded border-gray-300 cursor-pointer accent-indigo-600" 
-                  />
-                  <input 
-                    type="text"
-                    value={st.title}
-                    onChange={(e) => handleSubtaskTitleChange(st.id, e.target.value)}
-                    onBlur={(e) => saveSubtaskTitle(st.id, e.target.value)}
-                    onKeyDown={(e) => { if(e.key === 'Enter') { saveSubtaskTitle(st.id, e.currentTarget.value); e.currentTarget.blur(); } }}
-                    className={`flex-1 bg-transparent border-b border-transparent focus:border-indigo-500 outline-none text-sm transition-colors ${st.completed ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}
-                  />
-                  <button onClick={() => deleteSubtask(st.id)} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Trash2 size={14} />
-                  </button>
+                <div key={st.id} className="grid grid-cols-12 gap-2 items-center group bg-white dark:bg-[#1e293b] p-2 rounded-lg border border-gray-100 dark:border-gray-700 hover:shadow-sm transition-all">
+                  <div className="col-span-1 flex justify-center">
+                      <input 
+                        type="checkbox" 
+                        checked={st.completed} 
+                        onChange={() => toggleSubtask(st.id)} 
+                        className="w-4 h-4 rounded border-gray-300 cursor-pointer accent-indigo-600" 
+                      />
+                  </div>
+                  <div className="col-span-5">
+                      <input 
+                        type="text"
+                        value={st.title}
+                        onChange={(e) => handleSubtaskChange(st.id, 'title', e.target.value)}
+                        className={`w-full bg-transparent border-b border-transparent focus:border-indigo-500 outline-none text-sm transition-colors ${st.completed ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}
+                      />
+                  </div>
+                  <div className="col-span-3">
+                      <input 
+                        type="date"
+                        value={st.startDate ? st.startDate.split('T')[0] : ''}
+                        onChange={(e) => handleSubtaskChange(st.id, 'startDate', e.target.value)}
+                        className="w-full text-[10px] bg-transparent border border-gray-200 dark:border-gray-600 rounded px-1 py-0.5 text-gray-600 dark:text-gray-400 focus:ring-1 focus:ring-indigo-500"
+                      />
+                  </div>
+                  <div className="col-span-3 flex items-center gap-1">
+                      <input 
+                        type="date"
+                        value={st.dueDate ? st.dueDate.split('T')[0] : ''}
+                        onChange={(e) => handleSubtaskChange(st.id, 'dueDate', e.target.value)}
+                        className="w-full text-[10px] bg-transparent border border-gray-200 dark:border-gray-600 rounded px-1 py-0.5 text-gray-600 dark:text-gray-400 focus:ring-1 focus:ring-indigo-500"
+                      />
+                      <button onClick={() => deleteSubtask(st.id)} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Trash2 size={12} />
+                      </button>
+                  </div>
                 </div>
               ))}
             </div>
-            <button onClick={addSubtask} className="text-sm text-indigo-600 flex items-center gap-1 mt-2 hover:bg-indigo-50 px-2 py-1 rounded transition-colors"><Plus size={14} /> Novo Item</button>
+            <button onClick={addSubtask} className="text-sm text-indigo-600 flex items-center gap-1 mt-3 hover:bg-indigo-50 px-2 py-1 rounded transition-colors w-full justify-center border border-dashed border-indigo-200"><Plus size={14} /> Adicionar Atividade</button>
           </div>
         </div>
       </div>

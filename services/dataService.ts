@@ -340,6 +340,8 @@ export const api = {
       if (updates.title !== undefined) dbUpdates.title = updates.title;
       if (updates.completed !== undefined) dbUpdates.completed = updates.completed;
       if (updates.duration !== undefined) dbUpdates.duration = updates.duration;
+      if (updates.startDate !== undefined) dbUpdates.start_date = updates.startDate;
+      if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate;
       
       const { error } = await supabase.from('subtasks').update(dbUpdates).eq('id', subtaskId);
       return !error;
