@@ -73,6 +73,7 @@ export const api = {
           return { users: [], teams: [], groups: [], columns: [], tasks: [], routines: [], notifications: [], meetings: [] };
       }
 
+      // Prepara os times (inicialmente sem membros populados)
       const userTeams = memberships
         .map((m: any) => m.teams)
         .filter(t => t !== null)
@@ -80,7 +81,7 @@ export const api = {
              id: t.id, 
              name: t.name, 
              description: t.description, 
-             members: [],
+             members: [], // Será preenchido abaixo
              inviteCode: t.invite_code,
              avatar: t.avatar
         }));
@@ -91,8 +92,6 @@ export const api = {
       }
 
       // BUSCA PARALELA OTIMIZADA
-      // REMOVIDO: attachments(*) e comments(*) da query principal para acelerar o load inicial
-      // ADICIONADO: limit(50) nas notificações
       const [
           teamUsersRes,
           groupsRes,
@@ -109,18 +108,41 @@ export const api = {
           supabase.from('notifications').select('*').eq('user_id', currentUserId).order('created_at', { ascending: false }).limit(50)
       ]);
 
+      // 1. Processar Usuários
       const mappedUsers = teamUsersRes.data ? teamUsersRes.data.map((tu: any) => {
           const user = mapUser(tu.profiles);
-          user.role = tu.role || user.role;
+          user.role = tu.role || user.role; // Usa role do time se existir
           return user;
       }).filter(u => u.id) : [];
 
+      // 2. CORREÇÃO DE MEMBROS: Extrair IDs e atualizar o time atual
+      const currentTeamMemberIds = teamUsersRes.data ? teamUsersRes.data.map((tu: any) => tu.user_id) : [];
+      
+      const updatedTeams = userTeams.map((t: any) => {
+          if (t.id === teamId) {
+              return { ...t, members: currentTeamMemberIds };
+          }
+          return t;
+      });
+
+      // 3. CORREÇÃO DO KANBAN: Colunas Padrão se DB vazio
+      let mappedColumns = columnsRes.data ? columnsRes.data.map((c:any) => ({ id: c.id, title: c.title, color: c.color })) : [];
+
+      if (mappedColumns.length === 0) {
+          mappedColumns = [
+              { id: 'A Fazer', title: 'A Fazer', color: 'bg-gray-100 dark:bg-gray-800' },
+              { id: 'Em Progresso', title: 'Em Progresso', color: 'bg-blue-100 dark:bg-blue-900/30' },
+              { id: 'Revisão', title: 'Revisão', color: 'bg-purple-100 dark:bg-purple-900/30' },
+              { id: 'Concluído', title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30' }
+          ];
+      }
+
       return {
         users: mappedUsers,
-        teams: userTeams,
+        teams: updatedTeams,
         groups: groupsRes.data ? groupsRes.data.map((g:any) => ({ id: g.id, title: g.title, color: g.color, teamId: g.team_id })) : [],
-        columns: columnsRes.data ? columnsRes.data.map((c:any) => ({ id: c.id, title: c.title, color: c.color })) : [],
-        tasks: tasksRes.data ? tasksRes.data.map(mapTask) : [], // Tasks agora carregam leves (sem comments/anexos pesados)
+        columns: mappedColumns,
+        tasks: tasksRes.data ? tasksRes.data.map(mapTask) : [], 
         routines: routinesRes.data ? routinesRes.data.map((r:any) => ({ ...r, teamId: r.team_id, assigneeId: r.assignee_id, daysOfWeek: r.days_of_week, lastCompletedDate: r.last_completed_date })) : [],
         notifications: notificationsRes.data ? notificationsRes.data.map((n:any) => ({ ...n, userId: n.user_id, taskId: n.task_id })) : [],
         meetings: []
@@ -131,7 +153,6 @@ export const api = {
     }
   },
 
-  // Nova função para carregar detalhes pesados sob demanda
   getTaskDetails: async (taskId: string) => {
       const { data } = await supabase.from('tasks')
           .select('*, subtasks(*), attachments(*), comments(*)')
