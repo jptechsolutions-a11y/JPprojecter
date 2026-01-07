@@ -1,20 +1,21 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { User, Team, TeamRole } from '../types';
 import { Avatar } from './Avatar';
-import { Mail, Copy, RefreshCw, UserPlus, Check, Hash, Link as LinkIcon, Shield, Trash2, MoreVertical, Plus, Send, Edit2, Camera, Code, UserCog, Loader2, ShieldCheck, Settings } from 'lucide-react';
+import { Mail, Copy, RefreshCw, UserPlus, Check, Hash, Link as LinkIcon, Shield, Trash2, MoreVertical, Plus, Send, Edit2, Camera, Code, UserCog, Loader2, ShieldCheck, Settings, AlertTriangle } from 'lucide-react';
 import { Modal } from './Modal';
 import { api } from '../services/dataService';
 
 interface TeamViewProps {
     users: User[];
+    currentUser: User;
     currentTeam: Team;
     onDeleteTeam: (teamId: string) => void;
     roles?: TeamRole[]; // Opcional, vindo do App.tsx
     onRolesUpdate?: () => void; // Callback para atualizar dados no App
 }
 
-export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDeleteTeam, roles = [], onRolesUpdate }) => {
+export const TeamView: React.FC<TeamViewProps> = ({ users, currentUser, currentTeam, onDeleteTeam, roles = [], onRolesUpdate }) => {
     const [activeTab, setActiveTab] = useState<'members' | 'roles'>('members');
     
     // Modal States
@@ -44,6 +45,15 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDelete
     const teamLogoRef = useRef<HTMLInputElement>(null);
 
     const teamMembers = users.filter(u => currentTeam.members.includes(u.id));
+
+    // Permission Check
+    const isAdmin = currentUser.role === 'Admin' || currentUser.role === 'Owner';
+
+    useEffect(() => {
+        if (!isAdmin && activeTab === 'roles') {
+            setActiveTab('members');
+        }
+    }, [isAdmin, activeTab]);
 
     // --- Handlers ---
 
@@ -161,9 +171,9 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDelete
                                     <button onClick={() => { setIsEditing(false); setTeamName(currentTeam.name); setTeamAvatar(currentTeam.avatar); }} className="bg-red-500 text-white p-1 rounded hover:bg-red-600"><Trash2 size={16} /></button>
                                 </div>
                             ) : (
-                                <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2 group cursor-pointer" onClick={() => setIsEditing(true)}>
+                                <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2 group cursor-pointer" onClick={() => isAdmin && setIsEditing(true)}>
                                     {currentTeam.name}
-                                    <Edit2 size={16} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    {isAdmin && <Edit2 size={16} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />}
                                 </h2>
                             )}
                         </div>
@@ -179,13 +189,15 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDelete
                         <UserPlus size={18} /> Convidar
                     </button>
                     
-                    <button 
-                        onClick={() => onDeleteTeam(currentTeam.id)}
-                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                        title="Excluir Time"
-                    >
-                        <Trash2 size={20} />
-                    </button>
+                    {isAdmin && (
+                        <button 
+                            onClick={() => onDeleteTeam(currentTeam.id)}
+                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                            title="Excluir Time"
+                        >
+                            <Trash2 size={20} />
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -197,12 +209,14 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDelete
                 >
                     Membros ({teamMembers.length})
                 </button>
-                <button 
-                    onClick={() => setActiveTab('roles')}
-                    className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'roles' ? 'border-[#00b4d8] text-[#00b4d8]' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-white'}`}
-                >
-                    <ShieldCheck size={16} /> Cargos e Permissões
-                </button>
+                {isAdmin && (
+                    <button 
+                        onClick={() => setActiveTab('roles')}
+                        className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'roles' ? 'border-[#00b4d8] text-[#00b4d8]' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-white'}`}
+                    >
+                        <ShieldCheck size={16} /> Cargos e Permissões
+                    </button>
+                )}
             </div>
 
             {/* Content */}
@@ -210,12 +224,14 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDelete
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {teamMembers.map(member => (
                         <div key={member.id} className="bg-white dark:bg-[#1e293b] rounded-2xl border border-gray-100 dark:border-gray-700 p-6 flex flex-col items-center text-center relative group hover:shadow-xl transition-all h-full">
-                            <button 
-                                onClick={() => handleEditMember(member)}
-                                className="absolute top-4 right-4 text-gray-400 hover:text-indigo-500 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors opacity-0 group-hover:opacity-100"
-                            >
-                                <UserCog size={18} />
-                            </button>
+                            {isAdmin && (
+                                <button 
+                                    onClick={() => handleEditMember(member)}
+                                    className="absolute top-4 right-4 text-gray-400 hover:text-indigo-500 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors opacity-0 group-hover:opacity-100"
+                                >
+                                    <UserCog size={18} />
+                                </button>
+                            )}
                             
                             <div className="mb-4 relative">
                                 <Avatar src={member.avatar} alt={member.name} size="xl" className="shadow-md border-4 border-white dark:border-[#1e293b]" />
@@ -248,41 +264,42 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDelete
                     </button>
                 </div>
             ) : (
-                <div className="space-y-6">
-                    <div className="flex justify-between items-center">
-                        <p className="text-sm text-gray-500">Defina a hierarquia e funções do seu time.</p>
-                        <button 
-                            onClick={() => setIsRoleModalOpen(true)}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors"
-                        >
-                            <Plus size={16} /> Novo Cargo
-                        </button>
-                    </div>
+                isAdmin && (
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-center">
+                            <p className="text-sm text-gray-500">Defina a hierarquia e funções do seu time.</p>
+                            <button 
+                                onClick={() => setIsRoleModalOpen(true)}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors"
+                            >
+                                <Plus size={16} /> Novo Cargo
+                            </button>
+                        </div>
 
-                    <div className="grid grid-cols-1 gap-4">
-                        {roles.map(role => (
-                            <div key={role.id} className="bg-white dark:bg-[#1e293b] p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex items-center justify-between shadow-sm">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: role.color}}>
-                                        {role.level}
+                        <div className="grid grid-cols-1 gap-4">
+                            {roles.map(role => (
+                                <div key={role.id} className="bg-white dark:bg-[#1e293b] p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex items-center justify-between shadow-sm">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: role.color}}>
+                                            {role.level}
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-gray-800 dark:text-white text-lg">{role.name}</h4>
+                                            <p className="text-xs text-gray-500">
+                                                {role.level === 3 ? 'Acesso Total (Admin)' : role.level === 2 ? 'Editor (Cria/Edita Tarefas)' : 'Visualizador (Somente Leitura)'}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h4 className="font-bold text-gray-800 dark:text-white text-lg">{role.name}</h4>
-                                        <p className="text-xs text-gray-500">
-                                            {role.level === 3 ? 'Acesso Total (Admin)' : role.level === 2 ? 'Editor (Cria/Edita Tarefas)' : 'Visualizador (Somente Leitura)'}
-                                        </p>
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={() => handleDeleteRole(role.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                                            <Trash2 size={18} />
+                                        </button>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    {/* Prevent deleting default Admin role if needed, or handle in backend */}
-                                    <button onClick={() => handleDeleteRole(role.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
-                                        <Trash2 size={18} />
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
-                </div>
+                )
             )}
 
             {/* Member Edit Modal */}

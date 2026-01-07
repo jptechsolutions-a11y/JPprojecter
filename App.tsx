@@ -464,7 +464,7 @@ export default function App() {
            {activeView === 'dashboard' && <DashboardView tasks={tasks.filter(t => t.teamId === currentTeamId)} users={users} />}
            {activeView === 'routines' && <RoutineTasksView routines={routines} users={users} currentTeamId={currentTeamId || ''} onToggleRoutine={(id) => { api.updateRoutine(id, { lastCompletedDate: new Date().toISOString().split('T')[0] }).then(loadData); }} onAddRoutine={async (r) => { await api.createRoutine(r); loadData(); }} />}
            {activeView === 'profile' && currentUser && <ProfileView currentUser={currentUser} />}
-           {activeView === 'team' && currentTeam && <TeamView users={users} currentTeam={currentTeam} onDeleteTeam={handleDeleteTeam} roles={roles} onRolesUpdate={loadData} />}
+           {activeView === 'team' && currentTeam && currentUser && <TeamView users={users} currentTeam={currentTeam} currentUser={currentUser} onDeleteTeam={handleDeleteTeam} roles={roles} onRolesUpdate={loadData} />}
         </div>
       </main>
 
