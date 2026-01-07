@@ -9,9 +9,10 @@ import { api } from '../services/dataService';
 interface TeamViewProps {
     users: User[];
     currentTeam: Team;
+    onDeleteTeam: (teamId: string) => void;
 }
 
-export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam }) => {
+export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDeleteTeam }) => {
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [isMemberEditModalOpen, setIsMemberEditModalOpen] = useState(false);
     const [selectedMember, setSelectedMember] = useState<User | null>(null);
@@ -37,7 +38,7 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam }) => {
     const canEditMembers = currentUserRole === 'Admin' || currentUserRole === 'Owner';
 
     const handleCopyCode = () => {
-        navigator.clipboard.writeText(inviteCode);
+        navigator.clipboard.writeText(currentTeam.inviteCode || inviteCode);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
@@ -145,12 +146,34 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam }) => {
                         <p className="text-gray-500 text-sm mt-1">{currentTeam.description}</p>
                     </div>
                 </div>
-                <button 
-                    onClick={() => setIsInviteModalOpen(true)}
-                    className="flex items-center gap-2 bg-[#00b4d8] hover:bg-[#0096c7] text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-cyan-500/20"
-                >
-                    <UserPlus size={18} /> Convidar Membro
-                </button>
+                
+                <div className="flex items-center gap-3 flex-wrap">
+                    {/* Exibir Código de Convite */}
+                    <div 
+                        onClick={handleCopyCode}
+                        className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                        title="Clique para copiar"
+                    >
+                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Código:</span>
+                        <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 text-sm">{currentTeam.inviteCode}</span>
+                        {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} className="text-gray-400" />}
+                    </div>
+
+                    <button 
+                        onClick={() => setIsInviteModalOpen(true)}
+                        className="flex items-center gap-2 bg-[#00b4d8] hover:bg-[#0096c7] text-white px-5 py-2 rounded-xl font-bold transition-all shadow-lg shadow-cyan-500/20 text-sm"
+                    >
+                        <UserPlus size={18} /> Convidar
+                    </button>
+                    
+                    <button 
+                        onClick={() => onDeleteTeam(currentTeam.id)}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                        title="Excluir Time"
+                    >
+                        <Trash2 size={20} />
+                    </button>
+                </div>
             </div>
 
             {/* Member Grid */}

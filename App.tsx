@@ -292,6 +292,24 @@ export default function App() {
       }
   };
 
+  const handleDeleteTeam = async (teamId: string) => {
+      if (!confirm("ATENÇÃO: Você tem certeza que deseja excluir este time?\n\nIsso apagará permanentemente:\n- Todos os projetos\n- Todas as tarefas\n\nEssa ação não pode ser desfeita.")) return;
+      
+      setIsLoadingData(true);
+      const success = await api.deleteTeam(teamId);
+      if (success) {
+          alert("Time excluído com sucesso.");
+          // Remove from local state immediately
+          setTeams(prev => prev.filter(t => t.id !== teamId));
+          setCurrentTeamId(null);
+          // Reload data
+          await loadData();
+      } else {
+          alert("Erro ao excluir o time. Verifique se você é o dono (Admin).");
+          setIsLoadingData(false);
+      }
+  };
+
   if (!isAuthenticated || isRecoveringPassword) {
     return <LoginView onLogin={() => setIsAuthenticated(true)} initialMode={isRecoveringPassword ? 'update-password' : 'login'} />;
   }
@@ -427,7 +445,7 @@ export default function App() {
            {activeView === 'dashboard' && <DashboardView tasks={tasks.filter(t => t.teamId === currentTeamId)} users={users} />}
            {activeView === 'routines' && <RoutineTasksView routines={routines} users={users} currentTeamId={currentTeamId || ''} onToggleRoutine={(id) => { api.updateRoutine(id, { lastCompletedDate: new Date().toISOString().split('T')[0] }).then(loadData); }} onAddRoutine={async (r) => { await api.createRoutine(r); loadData(); }} />}
            {activeView === 'profile' && currentUser && <ProfileView currentUser={currentUser} />}
-           {activeView === 'team' && currentTeam && <TeamView users={users} currentTeam={currentTeam} />}
+           {activeView === 'team' && currentTeam && <TeamView users={users} currentTeam={currentTeam} onDeleteTeam={handleDeleteTeam} />}
         </div>
       </main>
 

@@ -181,6 +181,11 @@ export const api = {
       return !error;
   },
 
+  deleteTeam: async (teamId: string) => {
+      const { error } = await supabase.from('teams').delete().eq('id', teamId);
+      return !error;
+  },
+
   joinTeam: async (inviteCode: string, userId: string) => {
     try {
       const { data: teamData, error: teamError } = await supabase.from('teams').select('id').eq('invite_code', inviteCode.toUpperCase().trim()).single();
