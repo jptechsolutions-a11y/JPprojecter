@@ -57,19 +57,6 @@ const mapTask = (t: any): Task => ({
   }))
 });
 
-const mapMeeting = (m: any): Meeting => ({
-    id: m.id,
-    title: m.title,
-    description: m.description,
-    date: m.date,
-    startTime: m.start_time,
-    endTime: m.end_time,
-    meetUrl: m.meet_url,
-    attendees: m.attendees || [],
-    teamId: m.team_id,
-    isGoogleMeet: m.is_google_meet
-});
-
 export const api = {
   fetchProjectData: async (requestedTeamId: string | null) => {
     try {
@@ -103,7 +90,7 @@ export const api = {
           teamId = userTeams[0].id;
       }
 
-      // BUSCA PARALELA PARA MÁXIMA PERFORMANCE
+      // BUSCA PARALELA OTIMIZADA
       const [
           teamUsersRes,
           groupsRes,
@@ -119,7 +106,7 @@ export const api = {
           supabase.from('tasks').select('*, subtasks(*), attachments(*), comments(*)').eq('team_id', teamId),
           supabase.from('routines').select('*').eq('team_id', teamId),
           supabase.from('notifications').select('*').eq('user_id', currentUserId).order('created_at', { ascending: false }),
-          supabase.from('meetings').select('*').eq('team_id', teamId).order('date', { ascending: true })
+          supabase.from('meetings').select('*').eq('team_id', teamId)
       ]);
 
       const mappedUsers = teamUsersRes.data ? teamUsersRes.data.map((tu: any) => {
@@ -136,7 +123,18 @@ export const api = {
         tasks: tasksRes.data ? tasksRes.data.map(mapTask) : [],
         routines: routinesRes.data ? routinesRes.data.map((r:any) => ({ ...r, teamId: r.team_id, assigneeId: r.assignee_id, daysOfWeek: r.days_of_week, lastCompletedDate: r.last_completed_date })) : [],
         notifications: notificationsRes.data ? notificationsRes.data.map((n:any) => ({ ...n, userId: n.user_id, taskId: n.task_id })) : [],
-        meetings: meetingsRes.data ? meetingsRes.data.map(mapMeeting) : []
+        meetings: meetingsRes.data ? meetingsRes.data.map((m: any) => ({
+             id: m.id,
+             teamId: m.team_id,
+             title: m.title,
+             description: m.description,
+             date: m.date,
+             startTime: m.start_time,
+             endTime: m.end_time,
+             meetUrl: m.meet_url,
+             attendees: m.attendees || [],
+             isGoogleMeet: m.is_google_meet
+        })) : []
       };
     } catch (e) { 
         console.error("Fetch Error:", e);
@@ -260,22 +258,22 @@ export const api = {
   },
 
   createMeeting: async (meeting: Partial<Meeting>) => {
-      const { data, error } = await supabase.from('meetings').insert({
-          team_id: meeting.teamId,
-          title: meeting.title,
-          description: meeting.description,
-          date: meeting.date,
-          start_time: meeting.startTime,
-          end_time: meeting.endTime,
-          meet_url: meeting.meetUrl,
-          attendees: meeting.attendees,
-          is_google_meet: meeting.isGoogleMeet
-      }).select().single();
-      return !error ? mapMeeting(data) : null;
+    const { error } = await supabase.from('meetings').insert({
+      team_id: meeting.teamId,
+      title: meeting.title,
+      description: meeting.description,
+      date: meeting.date,
+      start_time: meeting.startTime,
+      end_time: meeting.endTime,
+      meet_url: meeting.meetUrl,
+      attendees: meeting.attendees,
+      is_google_meet: meeting.isGoogleMeet
+    });
+    return !error;
   },
 
-  deleteMeeting: async (id: string) => {
-      const { error } = await supabase.from('meetings').delete().eq('id', id);
-      return !error;
+  deleteMeeting: async (meetingId: string) => {
+    const { error } = await supabase.from('meetings').delete().eq('id', meetingId);
+    return !error;
   }
 };

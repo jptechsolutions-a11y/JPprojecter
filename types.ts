@@ -41,19 +41,6 @@ export interface Subtask {
   startDate?: string;
 }
 
-export interface Meeting {
-    id: string;
-    title: string;
-    description?: string;
-    date: string; // ISO Date
-    startTime: string; // "HH:mm"
-    endTime: string; // "HH:mm"
-    meetUrl?: string; // Link do Google Meet
-    attendees: string[]; // IDs dos usuários
-    teamId: string;
-    isGoogleMeet: boolean;
-}
-
 export interface Attachment {
   id: string;
   name: string;
@@ -107,6 +94,19 @@ export interface RoutineTask {
     daysOfWeek?: number[];
     time?: string;
     lastCompletedDate?: string;
+}
+
+export interface Meeting {
+    id: string;
+    teamId: string;
+    title: string;
+    description?: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    meetUrl: string;
+    attendees: string[];
+    isGoogleMeet: boolean;
 }
 
 export interface ChatHistoryItem {

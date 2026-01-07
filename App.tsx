@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Sparkles, Repeat, Sun, Moon, Image as ImageIcon, Briefcase, Link as LinkIcon, X, Filter, Save, Bell, Info, ShieldAlert, CheckCircle, Video, FolderPlus, Building2 } from 'lucide-react';
+import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2 } from 'lucide-react';
 import { Avatar } from './components/Avatar';
 import { Modal } from './components/Modal';
 import { TaskDetail } from './components/TaskDetail';
@@ -10,11 +10,9 @@ import { DashboardView } from './components/DashboardView';
 import { LoginView } from './components/LoginView';
 import { TeamOnboarding } from './components/TeamOnboarding';
 import { RoutineTasksView } from './components/RoutineTasksView';
-import { AIAssistantView } from './components/AIAssistantView';
-import { MeetingRoomView } from './components/MeetingRoomView';
 import { TeamView } from './components/TeamView';
 import { ProfileView } from './components/ProfileView'; 
-import { Task, User, Column, Status, Team, TaskGroup, RoutineTask, Notification, Meeting } from './types';
+import { Task, User, Column, Status, Team, TaskGroup, RoutineTask, Notification } from './types';
 import { api } from './services/dataService'; 
 import { supabase } from './services/supabaseClient';
 
@@ -28,7 +26,7 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, collapsed }: any) => 
         : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200'
     }`}
   >
-    <Icon size={15} className="flex-shrink-0" />
+    <Icon size={18} className="flex-shrink-0" />
     {!collapsed && <span className="font-medium whitespace-nowrap overflow-hidden text-ellipsis text-xs">{label}</span>}
   </button>
 );
@@ -84,7 +82,7 @@ const TaskCard: React.FC<{ task: Task; user?: User; onClick: () => void; onDragS
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [activeView, setActiveView] = useState<'list' | 'board' | 'gantt' | 'dashboard' | 'team' | 'profile' | 'routines' | 'ai' | 'meeting'>('list');
+  const [activeView, setActiveView] = useState<'list' | 'board' | 'gantt' | 'dashboard' | 'team' | 'profile' | 'routines'>('list');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true); 
   const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
@@ -97,7 +95,6 @@ export default function App() {
   const [columns, setColumns] = useState<Column[]>([]);
   const [routines, setRoutines] = useState<RoutineTask[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [meetings, setMeetings] = useState<Meeting[]>([]);
   
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
@@ -119,7 +116,6 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setIsAuthenticated(!!session);
       if(session?.user) {
-           // Carregamento IMEDIATO dos dados da sessão para evitar delay visual
            setCurrentUser({
                id: session.user.id,
                name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
@@ -141,6 +137,7 @@ export default function App() {
               setTasks([]);
               setCurrentUser(null);
           } else {
+              // Refresh user on auth change
               setCurrentUser({
                 id: session.user.id,
                 name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
@@ -173,13 +170,11 @@ export default function App() {
               setTasks(data.tasks);
               setRoutines(data.routines);
               setNotifications(data.notifications);
-              setMeetings(data.meetings);
               
               const { data: { session } } = await supabase.auth.getSession();
               if (session) {
                   const foundUser = data.users.find((u: User) => u.id === session.user.id);
                   if (foundUser) {
-                      // Injetar dados ricos do perfil mantendo o ID da sessão
                       const enrichedUser = { ...foundUser };
                       (enrichedUser as any).teamId = currentTeamId || data.teams[0].id;
                       setCurrentUser(enrichedUser);
@@ -293,7 +288,7 @@ export default function App() {
   }
 
   return (
-    <div className={`flex h-screen bg-gray-50 dark:bg-[#0f172a] text-gray-900 dark:text-gray-100`}>
+    <div className={`flex h-screen bg-gray-50 dark:bg-[#021221] text-gray-900 dark:text-gray-100`}>
       <aside className={`${isSidebarCollapsed ? 'w-16' : 'w-56'} bg-white dark:bg-[#1e293b] border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 relative z-30 shadow-sm`}>
         <button onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} className="absolute -right-3 top-8 bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-gray-600 rounded-full p-1 shadow-md text-gray-500 hover:text-[#00b4d8] z-10">
             {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
@@ -337,9 +332,8 @@ export default function App() {
           <SidebarItem icon={Columns} label="Quadro Kanban" active={activeView === 'board'} onClick={() => setActiveView('board')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={CalendarRange} label="Cronograma" active={activeView === 'gantt'} onClick={() => setActiveView('gantt')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={Repeat} label="Rotinas" active={activeView === 'routines'} onClick={() => setActiveView('routines')} collapsed={isSidebarCollapsed} />
-          <SidebarItem icon={Video} label="Sala de Reunião" active={activeView === 'meeting'} onClick={() => setActiveView('meeting')} collapsed={isSidebarCollapsed} />
           <SidebarItem icon={BarChart3} label="Indicadores" active={activeView === 'dashboard'} onClick={() => setActiveView('dashboard')} collapsed={isSidebarCollapsed} />
-          <SidebarItem icon={Sparkles} label="IA Assistant" active={activeView === 'ai'} onClick={() => setActiveView('ai')} collapsed={isSidebarCollapsed} />
+          
           <div className={`pt-4 pb-2 transition-opacity ${isSidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}>
             <span className="px-4 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Geral</span>
           </div>
@@ -359,7 +353,7 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col overflow-hidden bg-gray-50 dark:bg-[#0f172a] transition-colors relative">
+      <main className="flex-1 flex flex-col overflow-hidden bg-gray-50 dark:bg-[#021221] transition-colors relative">
         <header className="h-16 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 bg-white dark:bg-[#1e293b] shrink-0 z-20 shadow-sm relative">
            <div className="flex items-center gap-4">
                <h2 className="text-xl font-bold text-gray-800 dark:text-white whitespace-nowrap">
@@ -372,14 +366,14 @@ export default function App() {
                       placeholder="Buscar tarefas..." 
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 pr-4 py-1.5 bg-gray-100 dark:bg-[#0f172a] border border-transparent focus:bg-white focus:ring-2 focus:ring-[#00b4d8] rounded-full text-xs outline-none transition-all w-64"
+                      className="pl-10 pr-4 py-1.5 bg-gray-100 dark:bg-[#0f172a] border border-transparent focus:bg-white dark:focus:bg-[#0f172a] dark:text-white focus:ring-2 focus:ring-[#00b4d8] rounded-full text-xs outline-none transition-all w-64"
                    />
                </div>
            </div>
            
            <div className="flex items-center gap-4">
              <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
-                {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+                {isDarkMode ? <Sun size={20} className="text-yellow-500" /> : <Moon size={20} className="text-[#00b4d8]" />}
              </button>
              <div className="border-l border-gray-200 dark:border-gray-700 pl-4 cursor-pointer" onClick={() => setActiveView('profile')}>
                 <Avatar src={currentUser?.avatar} alt={currentUser?.name || '?'} />
@@ -387,7 +381,7 @@ export default function App() {
            </div>
         </header>
 
-        <div className={`flex-1 overflow-auto ${activeView === 'meeting' ? 'p-0' : 'p-6'}`}>
+        <div className="flex-1 overflow-auto p-6 scrollbar-hide">
            {activeView === 'list' && <ProjectListView tasks={filteredTasks} taskGroups={currentGroups} users={users} onTaskClick={setSelectedTask} onAddTask={(groupId) => { setPreSelectedGroupId(groupId); setIsNewTaskModalOpen(true); }} onUpdateTask={handleUpdateTask} onDeleteProject={handleDeleteProject} />}
            {activeView === 'board' && (
                <div className="flex h-full gap-6 overflow-x-auto pb-4 items-start snap-x">
@@ -420,42 +414,71 @@ export default function App() {
            {activeView === 'dashboard' && <DashboardView tasks={tasks.filter(t => t.teamId === currentTeamId)} users={users} />}
            {activeView === 'routines' && <RoutineTasksView routines={routines} users={users} currentTeamId={currentTeamId || ''} onToggleRoutine={(id) => { api.updateRoutine(id, { lastCompletedDate: new Date().toISOString().split('T')[0] }).then(loadData); }} onAddRoutine={async (r) => { await api.createRoutine(r); loadData(); }} />}
            {activeView === 'profile' && currentUser && <ProfileView currentUser={currentUser} />}
-           {activeView === 'ai' && <AIAssistantView />}
-           {activeView === 'meeting' && currentUser && <MeetingRoomView users={users} currentUser={currentUser} meetings={meetings} onUpdateMeetings={loadData} />}
            {activeView === 'team' && currentTeam && <TeamView users={users} currentTeam={currentTeam} />}
         </div>
       </main>
 
+      {/* Task Modal */}
       <Modal isOpen={!!selectedTask} onClose={() => setSelectedTask(null)} title="Detalhes da Tarefa">
         {selectedTask && currentUser && <TaskDetail task={selectedTask} users={users} columns={columns} currentUser={currentUser} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} onRequestApproval={() => {}} />}
       </Modal>
 
+      {/* New Task Modal */}
       <Modal isOpen={isNewTaskModalOpen} onClose={() => setIsNewTaskModalOpen(false)} title="Criar Nova Tarefa" maxWidth="max-w-md">
         <form onSubmit={handleCreateTask} className="space-y-4">
-          <div><label className="block text-sm font-medium mb-1 dark:text-gray-300">Título</label><input name="title" required className="w-full px-3 py-2 border rounded-lg dark:bg-[#0f172a] dark:border-gray-700" /></div>
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="block text-sm font-medium mb-1 dark:text-gray-300">Status</label><select name="status" className="w-full px-3 py-2 border rounded-lg dark:bg-[#0f172a] dark:border-gray-700">{columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}</select></div>
-            <div><label className="block text-sm font-medium mb-1 dark:text-gray-300">Grupo</label><select name="groupId" defaultValue={preSelectedGroupId || ''} className="w-full px-3 py-2 border rounded-lg dark:bg-[#0f172a] dark:border-gray-700">{currentGroups.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}</select></div>
+          <div>
+            <label className="block text-sm font-medium mb-1 dark:text-gray-300">Título</label>
+            <input name="title" required className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-[#1e293b] border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#00b4d8] outline-none" />
           </div>
-          <div className="pt-4 flex justify-end gap-3"><button type="button" onClick={() => setIsNewTaskModalOpen(false)} className="px-4 py-2 text-gray-600">Cancelar</button><button type="submit" className="px-4 py-2 bg-[#00b4d8] text-white rounded-lg font-bold">Criar</button></div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+                <label className="block text-sm font-medium mb-1 dark:text-gray-300">Status</label>
+                <select name="status" className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-[#1e293b] border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white outline-none">
+                    {columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                </select>
+            </div>
+            <div>
+                <label className="block text-sm font-medium mb-1 dark:text-gray-300">Grupo</label>
+                <select name="groupId" defaultValue={preSelectedGroupId || ''} className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-[#1e293b] border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white outline-none">
+                    {currentGroups.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}
+                </select>
+            </div>
+          </div>
+          <div className="pt-4 flex justify-end gap-3">
+            <button type="button" onClick={() => setIsNewTaskModalOpen(false)} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white">Cancelar</button>
+            <button type="submit" className="px-4 py-2 bg-[#00b4d8] text-white rounded-lg font-bold hover:bg-[#0096c7] transition-colors">Criar</button>
+          </div>
         </form>
       </Modal>
 
+      {/* New Project Modal (Fixed Colors) */}
       <Modal isOpen={isNewProjectModalOpen} onClose={() => setIsNewProjectModalOpen(false)} title="Novo Projeto" maxWidth="max-w-md">
         <form onSubmit={handleCreateProject} className="space-y-4">
-            <div><label className="block text-sm font-medium mb-1">Nome do Projeto</label><input name="title" required className="w-full px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-800 dark:border-gray-700" /></div>
             <div>
-                <label className="block text-sm font-medium mb-1">Cor</label>
-                <div className="flex gap-2">
+                <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">Nome do Projeto</label>
+                <input 
+                    name="title" 
+                    required 
+                    className="w-full px-4 py-3 border rounded-lg bg-gray-50 dark:bg-[#1e293b] border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-[#00b4d8] outline-none transition-all"
+                    placeholder="Ex: Marketing Digital"
+                />
+            </div>
+            <div>
+                <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Cor de Identificação</label>
+                <div className="flex gap-3">
                     {['#00b4d8', '#a25ddc', '#fdab3d', '#ff5c8d', '#20c997'].map(color => (
-                        <label key={color} className="cursor-pointer">
+                        <label key={color} className="cursor-pointer relative">
                             <input type="radio" name="color" value={color} className="peer sr-only" defaultChecked={color === '#00b4d8'} />
-                            <div className="w-8 h-8 rounded-full peer-checked:ring-2 ring-[#00b4d8] ring-offset-2" style={{backgroundColor: color}}></div>
+                            <div className="w-10 h-10 rounded-full hover:scale-110 transition-transform shadow-sm" style={{backgroundColor: color}}></div>
+                            <div className="absolute inset-0 rounded-full border-2 border-white dark:border-[#0f172a] peer-checked:ring-2 peer-checked:ring-offset-2 ring-[#00b4d8] opacity-0 peer-checked:opacity-100 transition-all"></div>
                         </label>
                     ))}
                 </div>
             </div>
-            <div className="pt-4 flex justify-end gap-3"><button type="button" onClick={() => setIsNewProjectModalOpen(false)} className="px-4 py-2 text-gray-600">Cancelar</button><button type="submit" className="px-4 py-2 bg-[#00b4d8] text-white rounded-lg font-bold">Criar</button></div>
+            <div className="pt-6 flex justify-end gap-3">
+                <button type="button" onClick={() => setIsNewProjectModalOpen(false)} className="px-4 py-2 text-gray-600 dark:text-gray-400 font-medium hover:text-gray-800 dark:hover:text-white">Cancelar</button>
+                <button type="submit" className="px-6 py-2 bg-[#00b4d8] text-white rounded-lg font-bold hover:bg-[#0096c7] shadow-lg shadow-cyan-500/20 transition-all">Criar</button>
+            </div>
         </form>
       </Modal>
     </div>
