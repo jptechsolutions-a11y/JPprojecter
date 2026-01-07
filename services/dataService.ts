@@ -57,6 +57,14 @@ const mapTask = (t: any): Task => ({
   }))
 });
 
+// --- Constants ---
+const DEFAULT_COLUMNS = [
+  { id: 'A Fazer', title: 'A Fazer', color: 'bg-gray-100 dark:bg-gray-800' },
+  { id: 'Em Progresso', title: 'Em Progresso', color: 'bg-blue-100 dark:bg-blue-900/30' },
+  { id: 'Revisão', title: 'Revisão', color: 'bg-purple-100 dark:bg-purple-900/30' },
+  { id: 'Concluído', title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30' }
+];
+
 export const api = {
   fetchProjectData: async (requestedTeamId: string | null) => {
     try {
@@ -125,15 +133,14 @@ export const api = {
           return t;
       });
 
+      // --- SELF HEALING COLUMNS ---
+      // Se não vier colunas do banco, inserimos as padrões para evitar erro de Foreign Key
       let mappedColumns = columnsRes.data ? columnsRes.data.map((c:any) => ({ id: c.id, title: c.title, color: c.color })) : [];
 
       if (mappedColumns.length === 0) {
-          mappedColumns = [
-              { id: 'A Fazer', title: 'A Fazer', color: 'bg-gray-100 dark:bg-gray-800' },
-              { id: 'Em Progresso', title: 'Em Progresso', color: 'bg-blue-100 dark:bg-blue-900/30' },
-              { id: 'Revisão', title: 'Revisão', color: 'bg-purple-100 dark:bg-purple-900/30' },
-              { id: 'Concluído', title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30' }
-          ];
+          // Tenta inserir no banco para corrigir o erro 23503 permanentemente
+          await supabase.from('columns').insert(DEFAULT_COLUMNS);
+          mappedColumns = DEFAULT_COLUMNS;
       }
       
       const mappedRoles: TeamRole[] = rolesRes.data ? rolesRes.data.map((r: any) => ({
@@ -270,8 +277,8 @@ export const api = {
       return !error;
   },
 
-  // FIXED: Do not send ID, let DB generate it to avoid 409
   createTask: async (task: Task) => {
+    // Tenta criar a tarefa
     const { data, error } = await supabase.from('tasks').insert({
       team_id: task.teamId, 
       group_id: task.groupId, 
@@ -286,6 +293,8 @@ export const api = {
     
     if (error) {
         console.error("SUPABASE ERROR CREATING TASK:", error);
+        // Se o erro for FK, tentamos garantir as colunas de novo? 
+        // Não, já foi feito no fetch. Apenas retorne o erro.
         return { success: false, error };
     }
     return { success: true, data: mapTask(data) };

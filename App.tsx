@@ -415,7 +415,7 @@ export default function App() {
         <header className="h-16 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 bg-white dark:bg-[#1e293b] shrink-0 z-20 shadow-sm relative">
            <div className="flex items-center gap-4">
                <h2 className="text-xl font-bold text-gray-800 dark:text-white whitespace-nowrap">
-                  {activeView === 'list' ? 'Resumo do Projeto' : activeView === 'board' ? 'Quadro de Tarefas' : activeView === 'gantt' ? 'Cronograma' : activeView === 'dashboard' ? 'Indicadores' : activeView === 'team' ? 'Equipe' : 'JP Projects'}
+                  {activeView === 'list' ? 'Resumo do Projeto' : activeView === 'board' ? 'Quadro de Tarefas' : activeView === 'gantt' ? 'Cronograma' : activeView === 'dashboard' ? 'Indicadores' : activeView === 'team' ? 'Equipe' : 'Time de Planejamento'}
                </h2>
                <div className="hidden md:flex relative ml-4">
                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
