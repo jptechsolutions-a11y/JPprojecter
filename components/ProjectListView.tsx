@@ -45,14 +45,39 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
     }
   };
 
+  const calculateEffectiveDateRange = (task: Task) => {
+      // Se não tiver subtarefas, usa as datas da tarefa
+      if (!task.subtasks || task.subtasks.length === 0) {
+          return { start: task.startDate, end: task.dueDate };
+      }
+
+      // Filtra datas válidas
+      const startDates = task.subtasks.map(s => s.startDate).filter(d => d).sort();
+      const endDates = task.subtasks.map(s => s.dueDate).filter(d => d).sort();
+
+      // Pega a menor data de início e a maior data de fim
+      const start = startDates.length > 0 ? startDates[0] : task.startDate;
+      const end = endDates.length > 0 ? endDates[endDates.length - 1] : task.dueDate;
+
+      return { start, end };
+  };
+
   const formatDateRange = (start?: string, end?: string) => {
       if (!start) return '-';
-      const s = new Date(start);
-      const e = end ? new Date(end) : null;
+      
+      // Ajuste de timezone simples para exibição correta (evita dia anterior)
+      const parseDate = (dateStr: string) => {
+          const parts = dateStr.split('T')[0].split('-');
+          return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      };
+
+      const s = parseDate(start);
+      const e = end ? parseDate(end) : null;
       
       const sStr = s.toLocaleDateString('pt-BR', { month: 'short', day: 'numeric' });
       if (!e) return sStr;
       const eStr = e.toLocaleDateString('pt-BR', { month: 'short', day: 'numeric' });
+      
       return `${sStr} - ${eStr}`;
   };
 
@@ -100,6 +125,7 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                 {/* Rows */}
                 {groupTasks.map(task => {
                    const totalDuration = calculateTotalDuration(task.subtasks);
+                   const { start: effectiveStart, end: effectiveEnd } = calculateEffectiveDateRange(task);
                    const timelineWidth = Math.min(100, totalDuration * 5); // Visual hack for timeline pill width
 
                    return (
@@ -111,7 +137,7 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                                 <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{task.title}</span>
                                 {task.subtasks.length > 0 && (
                                     <span className="text-[10px] text-gray-400 truncate">
-                                        {task.subtasks.length} subelementos
+                                        {task.subtasks.length} atividades
                                     </span>
                                 )}
                             </div>
@@ -132,7 +158,7 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                                     style={{ width: `${timelineWidth}%` }}
                                  ></div>
                                  <span className="relative z-10 text-[10px] font-bold text-gray-700 dark:text-white px-2 truncate">
-                                     {formatDateRange(task.startDate, task.dueDate)}
+                                     {formatDateRange(effectiveStart, effectiveEnd)}
                                  </span>
                              </div>
                         </div>
@@ -145,11 +171,11 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                         {/* Effort Column */}
                         <div className="col-span-2 flex items-center h-full">
                              <div className="flex-1 h-full flex flex-col justify-center items-center border-r border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-black/20">
-                                 <span className="text-xs font-bold text-gray-500 dark:text-gray-400">Esforço previsto</span>
-                                 <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{totalDuration * 8} horas</span>
+                                 <span className="text-xs font-bold text-gray-500 dark:text-gray-400">Previsto</span>
+                                 <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{totalDuration * 8}h</span>
                              </div>
                              <div className="flex-1 h-full flex flex-col justify-center items-center">
-                                 <span className="text-xs font-bold text-gray-500 dark:text-gray-400">Esforço utilizado</span>
+                                 <span className="text-xs font-bold text-gray-500 dark:text-gray-400">Real</span>
                                  <span className="text-xs font-bold text-gray-800 dark:text-gray-200">-</span> 
                              </div>
                         </div>

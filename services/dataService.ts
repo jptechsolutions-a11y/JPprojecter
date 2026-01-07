@@ -38,10 +38,10 @@ const mapTask = (t: any): Task => ({
     id: s.id,
     title: s.title,
     completed: s.completed,
-    assignee_id: s.assignee_id,
-    due_date: s.due_date,
-    start_date: s.start_date,
-    duration: s.duration || 1 // Default duration
+    assigneeId: s.assignee_id, // Fixed: camelCase
+    dueDate: s.due_date,       // Fixed: camelCase map from DB snake_case
+    startDate: s.start_date,   // Fixed: camelCase map from DB snake_case
+    duration: s.duration || 1 
   })).sort((a: any, b: any) => a.id.localeCompare(b.id)),
   attachments: (t.attachments || []).map((a: any) => ({
     id: a.id,
@@ -332,7 +332,7 @@ export const api = {
   // --- Subtask Management ---
   createSubtask: async (taskId: string, title: string, duration: number = 1) => {
       const { data, error } = await supabase.from('subtasks').insert({ task_id: taskId, title, completed: false, duration }).select().single();
-      return { success: !error, data: data ? { id: data.id, title: data.title, completed: data.completed, assignee_id: data.assignee_id, duration: data.duration } : null };
+      return { success: !error, data: data ? { id: data.id, title: data.title, completed: data.completed, assignee_id: data.assignee_id, duration: data.duration, startDate: data.start_date, dueDate: data.due_date } : null };
   },
 
   updateSubtask: async (subtaskId: string, updates: Partial<Subtask>) => {
@@ -340,6 +340,7 @@ export const api = {
       if (updates.title !== undefined) dbUpdates.title = updates.title;
       if (updates.completed !== undefined) dbUpdates.completed = updates.completed;
       if (updates.duration !== undefined) dbUpdates.duration = updates.duration;
+      // Map camelCase to snake_case for DB
       if (updates.startDate !== undefined) dbUpdates.start_date = updates.startDate;
       if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate;
       
