@@ -99,7 +99,7 @@ export default function App() {
   
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
-  const [isCreatingTask, setIsCreatingTask] = useState(false); // New state for loading
+  const [isCreatingTask, setIsCreatingTask] = useState(false); 
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [preSelectedGroupId, setPreSelectedGroupId] = useState<string | null>(null);
   const [isTeamSelectorOpen, setIsTeamSelectorOpen] = useState(false);
@@ -260,7 +260,6 @@ export default function App() {
     const status = formData.get('status') as Status;
     const groupId = formData.get('groupId') as string;
     
-    // Fallback if no group is selected but groups exist
     const actualGroupId = groupId || (currentGroups.length > 0 ? currentGroups[0].id : '');
     
     if (!actualGroupId && currentGroups.length === 0) {
@@ -269,8 +268,9 @@ export default function App() {
         return;
     }
 
+    const tempId = crypto.randomUUID();
     const newTask: Task = {
-      id: crypto.randomUUID(),
+      id: tempId, // Temporary ID for UI
       groupId: actualGroupId, 
       title, 
       status, 
@@ -282,18 +282,16 @@ export default function App() {
       approvalStatus: 'none'
     };
     
-    // Optimistic Update
-    const oldTasks = [...tasks];
-    setTasks([...tasks, newTask]);
-    setIsNewTaskModalOpen(false);
-
-    const success = await api.createTask(newTask);
-    if(success) {
-        await loadData();
+    // We do NOT add to state immediately to prevent ID conflict issues if update fails
+    // Instead we wait for server response
+    
+    const result = await api.createTask(newTask);
+    if(result.success && result.data) {
+        setTasks([...tasks, result.data]);
+        setIsNewTaskModalOpen(false);
     } else {
-        alert("Erro ao criar tarefa. Verifique permissões.");
-        // Rollback optimistic update
-        setTasks(oldTasks);
+        alert("Erro ao criar tarefa. Verifique se você tem permissão.");
+        console.error(result.error);
     }
     setIsCreatingTask(false);
   };

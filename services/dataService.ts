@@ -73,7 +73,7 @@ export const api = {
           return { users: [], teams: [], groups: [], columns: [], tasks: [], routines: [], notifications: [], meetings: [], roles: [] };
       }
 
-      // Prepara os times (inicialmente sem membros populados)
+      // Prepara os times
       const userTeams = memberships
         .map((m: any) => m.teams)
         .filter(t => t !== null)
@@ -81,7 +81,7 @@ export const api = {
              id: t.id, 
              name: t.name, 
              description: t.description, 
-             members: [], // Será preenchido abaixo
+             members: [], 
              inviteCode: t.invite_code,
              avatar: t.avatar
         }));
@@ -91,7 +91,7 @@ export const api = {
           teamId = userTeams[0].id;
       }
 
-      // BUSCA PARALELA OTIMIZADA
+      // BUSCA PARALELA
       const [
           teamUsersRes,
           groupsRes,
@@ -99,7 +99,7 @@ export const api = {
           tasksRes,
           routinesRes,
           notificationsRes,
-          rolesRes // Busca roles do time
+          rolesRes 
       ] = await Promise.all([
           supabase.from('team_members').select('user_id, role, profiles(*)').eq('team_id', teamId),
           supabase.from('task_groups').select('*').eq('team_id', teamId),
@@ -110,14 +110,12 @@ export const api = {
           supabase.from('team_roles').select('*').eq('team_id', teamId)
       ]);
 
-      // 1. Processar Usuários
       const mappedUsers = teamUsersRes.data ? teamUsersRes.data.map((tu: any) => {
           const user = mapUser(tu.profiles);
-          user.role = tu.role || user.role; // Usa role do time se existir
+          user.role = tu.role || user.role; 
           return user;
       }).filter(u => u.id) : [];
 
-      // 2. CORREÇÃO DE MEMBROS
       const currentTeamMemberIds = teamUsersRes.data ? teamUsersRes.data.map((tu: any) => tu.user_id) : [];
       
       const updatedTeams = userTeams.map((t: any) => {
@@ -127,7 +125,6 @@ export const api = {
           return t;
       });
 
-      // 3. CORREÇÃO DO KANBAN
       let mappedColumns = columnsRes.data ? columnsRes.data.map((c:any) => ({ id: c.id, title: c.title, color: c.color })) : [];
 
       if (mappedColumns.length === 0) {
@@ -139,7 +136,6 @@ export const api = {
           ];
       }
       
-      // 4. Mapear Roles
       const mappedRoles: TeamRole[] = rolesRes.data ? rolesRes.data.map((r: any) => ({
           id: r.id,
           teamId: r.team_id,
@@ -165,7 +161,6 @@ export const api = {
     }
   },
 
-  // --- Role Management ---
   createTeamRole: async (teamId: string, name: string, level: number, color: string) => {
       const { data, error } = await supabase.from('team_roles').insert({ team_id: teamId, name, level, color }).select().single();
       return data ? { id: data.id, teamId: data.team_id, name: data.name, level: data.level, color: data.color } as TeamRole : null;
@@ -198,7 +193,6 @@ export const api = {
   },
 
   updateMemberRole: async (teamId: string, userId: string, newRole: string) => {
-    // Agora apenas atualiza o texto, mas a UI deve garantir que o texto é um dos roles válidos
     const { error } = await supabase.from('team_members').update({ role: newRole }).eq('team_id', teamId).eq('user_id', userId);
     return !error;
   },
@@ -211,14 +205,12 @@ export const api = {
           
           await supabase.from('team_members').insert({ team_id: teamData.id, user_id: ownerId, role: 'Admin' });
           
-          // Criar grupos padrão
           const defaultGroups = [
               { title: 'Desenvolvimento', color: '#00b4d8', team_id: teamData.id },
               { title: 'Design & UX', color: '#a25ddc', team_id: teamData.id }
           ];
           await supabase.from('task_groups').insert(defaultGroups);
 
-          // Criar Roles Padrão
           const defaultRoles = [
               { team_id: teamData.id, name: 'Admin', level: 3, color: '#ef4444' },
               { team_id: teamData.id, name: 'Membro', level: 2, color: '#3b82f6' },
@@ -278,14 +270,25 @@ export const api = {
       return !error;
   },
 
+  // FIXED: Do not send ID, let DB generate it to avoid 409
   createTask: async (task: Task) => {
-    const { error } = await supabase.from('tasks').insert({
-      id: task.id, team_id: task.teamId, group_id: task.groupId, title: task.title,
-      description: task.description, status: task.status, priority: task.priority,
-      assignee_id: task.assigneeId, start_date: task.startDate, due_date: task.dueDate
-    });
-    if (error) console.error("SUPABASE ERROR CREATING TASK:", error);
-    return !error;
+    const { data, error } = await supabase.from('tasks').insert({
+      team_id: task.teamId, 
+      group_id: task.groupId, 
+      title: task.title,
+      description: task.description, 
+      status: task.status, 
+      priority: task.priority,
+      assignee_id: task.assigneeId, 
+      start_date: task.startDate, 
+      due_date: task.dueDate
+    }).select().single();
+    
+    if (error) {
+        console.error("SUPABASE ERROR CREATING TASK:", error);
+        return { success: false, error };
+    }
+    return { success: true, data: mapTask(data) };
   },
 
   updateTask: async (task: Task) => {
