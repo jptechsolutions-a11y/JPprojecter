@@ -1,6 +1,6 @@
 
 import { supabase } from './supabaseClient';
-import { Task, User, Team, TaskGroup, Column, RoutineTask, Notification, Subtask, Attachment, Comment, Meeting } from '../types';
+import { Task, User, Team, TaskGroup, Column, RoutineTask, Notification, Subtask, Attachment, Comment, Meeting, TeamRole } from '../types';
 
 // --- Mappers ---
 
@@ -70,7 +70,7 @@ export const api = {
         .eq('user_id', currentUserId);
       
       if (mErr || !memberships || memberships.length === 0) {
-          return { users: [], teams: [], groups: [], columns: [], tasks: [], routines: [], notifications: [], meetings: [] };
+          return { users: [], teams: [], groups: [], columns: [], tasks: [], routines: [], notifications: [], meetings: [], roles: [] };
       }
 
       // Prepara os times (inicialmente sem membros populados)
@@ -98,14 +98,16 @@ export const api = {
           columnsRes,
           tasksRes,
           routinesRes,
-          notificationsRes
+          notificationsRes,
+          rolesRes // Busca roles do time
       ] = await Promise.all([
           supabase.from('team_members').select('user_id, role, profiles(*)').eq('team_id', teamId),
           supabase.from('task_groups').select('*').eq('team_id', teamId),
           supabase.from('columns').select('*').order('id', { ascending: true }),
           supabase.from('tasks').select('*, subtasks(*)').eq('team_id', teamId), 
           supabase.from('routines').select('*').eq('team_id', teamId),
-          supabase.from('notifications').select('*').eq('user_id', currentUserId).order('created_at', { ascending: false }).limit(50)
+          supabase.from('notifications').select('*').eq('user_id', currentUserId).order('created_at', { ascending: false }).limit(50),
+          supabase.from('team_roles').select('*').eq('team_id', teamId)
       ]);
 
       // 1. Processar Usuários
@@ -115,7 +117,7 @@ export const api = {
           return user;
       }).filter(u => u.id) : [];
 
-      // 2. CORREÇÃO DE MEMBROS: Extrair IDs e atualizar o time atual
+      // 2. CORREÇÃO DE MEMBROS
       const currentTeamMemberIds = teamUsersRes.data ? teamUsersRes.data.map((tu: any) => tu.user_id) : [];
       
       const updatedTeams = userTeams.map((t: any) => {
@@ -125,7 +127,7 @@ export const api = {
           return t;
       });
 
-      // 3. CORREÇÃO DO KANBAN: Colunas Padrão se DB vazio
+      // 3. CORREÇÃO DO KANBAN
       let mappedColumns = columnsRes.data ? columnsRes.data.map((c:any) => ({ id: c.id, title: c.title, color: c.color })) : [];
 
       if (mappedColumns.length === 0) {
@@ -136,6 +138,15 @@ export const api = {
               { id: 'Concluído', title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30' }
           ];
       }
+      
+      // 4. Mapear Roles
+      const mappedRoles: TeamRole[] = rolesRes.data ? rolesRes.data.map((r: any) => ({
+          id: r.id,
+          teamId: r.team_id,
+          name: r.name,
+          level: r.level,
+          color: r.color
+      })) : [];
 
       return {
         users: mappedUsers,
@@ -145,12 +156,24 @@ export const api = {
         tasks: tasksRes.data ? tasksRes.data.map(mapTask) : [], 
         routines: routinesRes.data ? routinesRes.data.map((r:any) => ({ ...r, teamId: r.team_id, assigneeId: r.assignee_id, daysOfWeek: r.days_of_week, lastCompletedDate: r.last_completed_date })) : [],
         notifications: notificationsRes.data ? notificationsRes.data.map((n:any) => ({ ...n, userId: n.user_id, taskId: n.task_id })) : [],
-        meetings: []
+        meetings: [],
+        roles: mappedRoles
       };
     } catch (e) { 
         console.error("Fetch Error:", e);
         return null; 
     }
+  },
+
+  // --- Role Management ---
+  createTeamRole: async (teamId: string, name: string, level: number, color: string) => {
+      const { data, error } = await supabase.from('team_roles').insert({ team_id: teamId, name, level, color }).select().single();
+      return data ? { id: data.id, teamId: data.team_id, name: data.name, level: data.level, color: data.color } as TeamRole : null;
+  },
+
+  deleteTeamRole: async (roleId: string) => {
+      const { error } = await supabase.from('team_roles').delete().eq('id', roleId);
+      return !error;
   },
 
   getTaskDetails: async (taskId: string) => {
@@ -175,6 +198,7 @@ export const api = {
   },
 
   updateMemberRole: async (teamId: string, userId: string, newRole: string) => {
+    // Agora apenas atualiza o texto, mas a UI deve garantir que o texto é um dos roles válidos
     const { error } = await supabase.from('team_members').update({ role: newRole }).eq('team_id', teamId).eq('user_id', userId);
     return !error;
   },
@@ -184,12 +208,24 @@ export const api = {
           const inviteCode = `JP-${name.substring(0,3).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
           const { data: teamData, error: teamError } = await supabase.from('teams').insert({ name, description, owner_id: ownerId, invite_code: inviteCode }).select().single();
           if (teamError || !teamData) return false;
+          
           await supabase.from('team_members').insert({ team_id: teamData.id, user_id: ownerId, role: 'Admin' });
+          
+          // Criar grupos padrão
           const defaultGroups = [
               { title: 'Desenvolvimento', color: '#00b4d8', team_id: teamData.id },
               { title: 'Design & UX', color: '#a25ddc', team_id: teamData.id }
           ];
           await supabase.from('task_groups').insert(defaultGroups);
+
+          // Criar Roles Padrão
+          const defaultRoles = [
+              { team_id: teamData.id, name: 'Admin', level: 3, color: '#ef4444' },
+              { team_id: teamData.id, name: 'Membro', level: 2, color: '#3b82f6' },
+              { team_id: teamData.id, name: 'Observador', level: 1, color: '#9ca3af' }
+          ];
+          await supabase.from('team_roles').insert(defaultRoles);
+
           return true;
       } catch (e) { return false; }
   },
@@ -248,6 +284,7 @@ export const api = {
       description: task.description, status: task.status, priority: task.priority,
       assignee_id: task.assigneeId, start_date: task.startDate, due_date: task.dueDate
     });
+    if (error) console.error("Error creating task:", error);
     return !error;
   },
 
@@ -282,10 +319,12 @@ export const api = {
   },
 
   createMeeting: async (meeting: Partial<Meeting>) => {
-    return true; // Mock para manter compatibilidade
+    const { error } = await supabase.from('meetings').insert(meeting);
+    return !error; 
   },
 
   deleteMeeting: async (meetingId: string) => {
-    return true; // Mock
+    const { error } = await supabase.from('meetings').delete().eq('id', meetingId);
+    return !error;
   }
 };

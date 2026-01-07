@@ -12,7 +12,7 @@ import { TeamOnboarding } from './components/TeamOnboarding';
 import { RoutineTasksView } from './components/RoutineTasksView';
 import { TeamView } from './components/TeamView';
 import { ProfileView } from './components/ProfileView'; 
-import { Task, User, Column, Status, Team, TaskGroup, RoutineTask, Notification } from './types';
+import { Task, User, Column, Status, Team, TaskGroup, RoutineTask, Notification, TeamRole } from './types';
 import { api } from './services/dataService'; 
 import { supabase } from './services/supabaseClient';
 
@@ -95,6 +95,7 @@ export default function App() {
   const [columns, setColumns] = useState<Column[]>([]);
   const [routines, setRoutines] = useState<RoutineTask[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [roles, setRoles] = useState<TeamRole[]>([]);
   
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
@@ -169,6 +170,7 @@ export default function App() {
               setTasks(data.tasks);
               setRoutines(data.routines);
               setNotifications(data.notifications);
+              setRoles(data.roles || []);
               
               const { data: { session } } = await supabase.auth.getSession();
               if (session) {
@@ -254,9 +256,21 @@ export default function App() {
     const status = formData.get('status') as Status;
     const groupId = formData.get('groupId') as string;
     
+    // Fallback if no group is selected but groups exist
+    const actualGroupId = groupId || (currentGroups.length > 0 ? currentGroups[0].id : '');
+    
+    if (!actualGroupId && currentGroups.length === 0) {
+        alert("Crie um projeto antes de criar tarefas!");
+        return;
+    }
+
     const newTask: Task = {
       id: crypto.randomUUID(),
-      groupId, title, status, description: '', priority: 'Média',
+      groupId: actualGroupId, 
+      title, 
+      status, 
+      description: '', 
+      priority: 'Média',
       startDate: new Date().toISOString().split('T')[0],
       tags: [], subtasks: [], progress: 0, attachments: [], comments: [],
       createdAt: new Date().toISOString(), teamId: currentTeamId || '',
@@ -265,8 +279,13 @@ export default function App() {
     
     setTasks([...tasks, newTask]);
     setIsNewTaskModalOpen(false);
-    await api.createTask(newTask);
-    loadData();
+    const success = await api.createTask(newTask);
+    if(success) loadData();
+    else {
+        alert("Erro ao criar tarefa. Verifique permissões.");
+        // Rollback optimistic update
+        setTasks(prev => prev.filter(t => t.id !== newTask.id));
+    }
   };
 
   const handleCreateProject = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -445,7 +464,7 @@ export default function App() {
            {activeView === 'dashboard' && <DashboardView tasks={tasks.filter(t => t.teamId === currentTeamId)} users={users} />}
            {activeView === 'routines' && <RoutineTasksView routines={routines} users={users} currentTeamId={currentTeamId || ''} onToggleRoutine={(id) => { api.updateRoutine(id, { lastCompletedDate: new Date().toISOString().split('T')[0] }).then(loadData); }} onAddRoutine={async (r) => { await api.createRoutine(r); loadData(); }} />}
            {activeView === 'profile' && currentUser && <ProfileView currentUser={currentUser} />}
-           {activeView === 'team' && currentTeam && <TeamView users={users} currentTeam={currentTeam} onDeleteTeam={handleDeleteTeam} />}
+           {activeView === 'team' && currentTeam && <TeamView users={users} currentTeam={currentTeam} onDeleteTeam={handleDeleteTeam} roles={roles} onRolesUpdate={loadData} />}
         </div>
       </main>
 

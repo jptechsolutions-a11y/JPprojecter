@@ -25,6 +25,14 @@ export interface Team {
   avatar?: string;
 }
 
+export interface TeamRole {
+  id: string;
+  teamId: string;
+  name: string;
+  level: number; // 1: View, 2: Edit, 3: Admin
+  color: string;
+}
+
 export interface TaskGroup {
   id: string;
   title: string;

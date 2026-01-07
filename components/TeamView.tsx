@@ -1,8 +1,8 @@
 
 import React, { useState, useRef } from 'react';
-import { User, Team } from '../types';
+import { User, Team, TeamRole } from '../types';
 import { Avatar } from './Avatar';
-import { Mail, Copy, RefreshCw, UserPlus, Check, Hash, Link as LinkIcon, Shield, Trash2, MoreVertical, Plus, Send, Edit2, Camera, Code, UserCog, Loader2 } from 'lucide-react';
+import { Mail, Copy, RefreshCw, UserPlus, Check, Hash, Link as LinkIcon, Shield, Trash2, MoreVertical, Plus, Send, Edit2, Camera, Code, UserCog, Loader2, ShieldCheck, Settings } from 'lucide-react';
 import { Modal } from './Modal';
 import { api } from '../services/dataService';
 
@@ -10,32 +10,42 @@ interface TeamViewProps {
     users: User[];
     currentTeam: Team;
     onDeleteTeam: (teamId: string) => void;
+    roles?: TeamRole[]; // Opcional, vindo do App.tsx
+    onRolesUpdate?: () => void; // Callback para atualizar dados no App
 }
 
-export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDeleteTeam }) => {
+export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDeleteTeam, roles = [], onRolesUpdate }) => {
+    const [activeTab, setActiveTab] = useState<'members' | 'roles'>('members');
+    
+    // Modal States
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [isMemberEditModalOpen, setIsMemberEditModalOpen] = useState(false);
+    const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+
+    // Member Editing
     const [selectedMember, setSelectedMember] = useState<User | null>(null);
-    const [newRole, setNewRole] = useState('');
+    const [newRoleName, setNewRoleName] = useState('');
     const [isUpdatingRole, setIsUpdatingRole] = useState(false);
     
+    // Role Creation
+    const [newCustomRole, setNewCustomRole] = useState({ name: '', level: 1, color: '#6b7280' });
+
+    // Invite Logic
     const [inviteEmail, setInviteEmail] = useState('');
-    const [activeTab, setActiveTab] = useState<'email' | 'code'>('email');
+    const [inviteTab, setInviteTab] = useState<'email' | 'code'>('email');
     const [inviteCode, setInviteCode] = useState(currentTeam.inviteCode || 'JP-TEAM-000');
     const [copied, setCopied] = useState(false);
     const [isSending, setIsSending] = useState(false);
     
+    // Team Edit
     const [isEditing, setIsEditing] = useState(false);
     const [teamName, setTeamName] = useState(currentTeam.name);
     const [teamAvatar, setTeamAvatar] = useState(currentTeam.avatar);
-    
     const teamLogoRef = useRef<HTMLInputElement>(null);
 
     const teamMembers = users.filter(u => currentTeam.members.includes(u.id));
-    
-    // Simulação do usuário logado para permissões
-    const currentUserRole = users.find(u => u.id === users[0].id)?.role; // Exemplo simplificado
-    const canEditMembers = currentUserRole === 'Admin' || currentUserRole === 'Owner';
+
+    // --- Handlers ---
 
     const handleCopyCode = () => {
         navigator.clipboard.writeText(currentTeam.inviteCode || inviteCode);
@@ -80,21 +90,38 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDelete
 
     const handleEditMember = (member: User) => {
         setSelectedMember(member);
-        setNewRole(member.role);
+        setNewRoleName(member.role);
         setIsMemberEditModalOpen(true);
     };
 
     const handleSaveMemberRole = async () => {
         if (!selectedMember) return;
         setIsUpdatingRole(true);
-        const success = await api.updateMemberRole(currentTeam.id, selectedMember.id, newRole);
+        const success = await api.updateMemberRole(currentTeam.id, selectedMember.id, newRoleName);
         if (success) {
-            selectedMember.role = newRole;
+            selectedMember.role = newRoleName;
             setIsMemberEditModalOpen(false);
+            if(onRolesUpdate) onRolesUpdate();
         } else {
             alert('Erro ao atualizar cargo.');
         }
         setIsUpdatingRole(false);
+    };
+
+    const handleCreateRole = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const created = await api.createTeamRole(currentTeam.id, newCustomRole.name, newCustomRole.level, newCustomRole.color);
+        if(created) {
+            if(onRolesUpdate) onRolesUpdate();
+            setIsRoleModalOpen(false);
+            setNewCustomRole({ name: '', level: 1, color: '#6b7280' });
+        }
+    };
+
+    const handleDeleteRole = async (roleId: string) => {
+        if(!confirm('Tem certeza? Usuários com este cargo podem ficar sem permissão.')) return;
+        const success = await api.deleteTeamRole(roleId);
+        if(success && onRolesUpdate) onRolesUpdate();
     };
 
     return (
@@ -139,26 +166,12 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDelete
                                     <Edit2 size={16} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </h2>
                             )}
-                            <span className="text-xs bg-indigo-100 dark:bg-indigo-900 text-indigo-600 dark:text-indigo-300 px-2 py-1 rounded-full border border-indigo-200 dark:border-indigo-700">
-                                {teamMembers.length} membros
-                            </span>
                         </div>
                         <p className="text-gray-500 text-sm mt-1">{currentTeam.description}</p>
                     </div>
                 </div>
                 
                 <div className="flex items-center gap-3 flex-wrap">
-                    {/* Exibir Código de Convite */}
-                    <div 
-                        onClick={handleCopyCode}
-                        className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        title="Clique para copiar"
-                    >
-                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Código:</span>
-                        <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 text-sm">{currentTeam.inviteCode}</span>
-                        {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} className="text-gray-400" />}
-                    </div>
-
                     <button 
                         onClick={() => setIsInviteModalOpen(true)}
                         className="flex items-center gap-2 bg-[#00b4d8] hover:bg-[#0096c7] text-white px-5 py-2 rounded-xl font-bold transition-all shadow-lg shadow-cyan-500/20 text-sm"
@@ -176,62 +189,101 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDelete
                 </div>
             </div>
 
-            {/* Member Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {teamMembers.map(member => (
-                    <div key={member.id} className="bg-white dark:bg-[#1e293b] rounded-2xl border border-gray-100 dark:border-gray-700 p-6 flex flex-col items-center text-center relative group hover:shadow-xl transition-all h-full">
-                        <button 
-                            onClick={() => handleEditMember(member)}
-                            className="absolute top-4 right-4 text-gray-400 hover:text-indigo-500 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors opacity-0 group-hover:opacity-100"
-                        >
-                            <UserCog size={18} />
-                        </button>
-                        
-                        <div className="mb-4 relative">
-                            <Avatar src={member.avatar} alt={member.name} size="xl" className="shadow-md border-4 border-white dark:border-[#1e293b]" />
-                            <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-white dark:border-[#1e293b] rounded-full"></div>
-                        </div>
-                        
-                        <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-1">{member.name}</h3>
-                        <p className="text-indigo-600 dark:text-indigo-400 text-sm font-semibold mb-6">{member.role}</p>
-                        
-                        {/* Skills Display Improved */}
-                        <div className="w-full mb-8">
-                            <div className="flex items-center justify-center gap-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">
-                                <Code size={12} className="text-indigo-500" /> Habilidades
-                            </div>
-                            <div className="flex flex-wrap gap-2 justify-center min-h-[60px]">
-                                {member.skills && member.skills.length > 0 ? member.skills.map((skill, i) => (
-                                    <span key={i} className="px-3 py-1.5 bg-gray-50 dark:bg-[#0f172a] text-gray-700 dark:text-gray-300 rounded-lg text-[11px] border border-gray-200 dark:border-gray-700 font-bold shadow-sm transition-transform hover:scale-105">
-                                        {skill}
-                                    </span>
-                                )) : (
-                                    <span className="text-xs text-gray-400 italic">Sem habilidades listadas</span>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="w-full pt-5 border-t border-gray-100 dark:border-gray-700 mt-auto">
-                             <div className="flex items-center justify-center gap-2 text-gray-500 dark:text-gray-400">
-                                 <Mail size={14} className="shrink-0 text-[#00b4d8]" /> 
-                                 <span className="text-[12px] font-medium break-all select-all">{member.email}</span>
-                             </div>
-                        </div>
-                    </div>
-                ))}
-                
-                {/* Add Placeholder Card */}
+            {/* Tabs */}
+            <div className="flex border-b border-gray-200 dark:border-gray-700">
                 <button 
-                    onClick={() => setIsInviteModalOpen(true)}
-                    className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-2xl p-6 flex flex-col items-center justify-center text-gray-400 hover:text-[#00b4d8] hover:border-[#00b4d8] hover:bg-gray-50 dark:hover:bg-[#1b263b] transition-all min-h-[350px] group"
+                    onClick={() => setActiveTab('members')}
+                    className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'members' ? 'border-[#00b4d8] text-[#00b4d8]' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-white'}`}
                 >
-                    <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                        <Plus size={32} />
-                    </div>
-                    <span className="font-bold">Adicionar Novo</span>
-                    <span className="text-xs mt-1">Convidar para o time</span>
+                    Membros ({teamMembers.length})
+                </button>
+                <button 
+                    onClick={() => setActiveTab('roles')}
+                    className={`px-6 py-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'roles' ? 'border-[#00b4d8] text-[#00b4d8]' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-white'}`}
+                >
+                    <ShieldCheck size={16} /> Cargos e Permissões
                 </button>
             </div>
+
+            {/* Content */}
+            {activeTab === 'members' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {teamMembers.map(member => (
+                        <div key={member.id} className="bg-white dark:bg-[#1e293b] rounded-2xl border border-gray-100 dark:border-gray-700 p-6 flex flex-col items-center text-center relative group hover:shadow-xl transition-all h-full">
+                            <button 
+                                onClick={() => handleEditMember(member)}
+                                className="absolute top-4 right-4 text-gray-400 hover:text-indigo-500 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors opacity-0 group-hover:opacity-100"
+                            >
+                                <UserCog size={18} />
+                            </button>
+                            
+                            <div className="mb-4 relative">
+                                <Avatar src={member.avatar} alt={member.name} size="xl" className="shadow-md border-4 border-white dark:border-[#1e293b]" />
+                            </div>
+                            
+                            <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-1">{member.name}</h3>
+                            <div className="mb-6">
+                                <span className="text-xs font-bold px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                                    {member.role}
+                                </span>
+                            </div>
+                            
+                            <div className="w-full pt-5 border-t border-gray-100 dark:border-gray-700 mt-auto">
+                                 <div className="flex items-center justify-center gap-2 text-gray-500 dark:text-gray-400">
+                                     <Mail size={14} className="shrink-0 text-[#00b4d8]" /> 
+                                     <span className="text-[12px] font-medium break-all select-all">{member.email}</span>
+                                 </div>
+                            </div>
+                        </div>
+                    ))}
+                    
+                    <button 
+                        onClick={() => setIsInviteModalOpen(true)}
+                        className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-2xl p-6 flex flex-col items-center justify-center text-gray-400 hover:text-[#00b4d8] hover:border-[#00b4d8] hover:bg-gray-50 dark:hover:bg-[#1b263b] transition-all min-h-[300px] group"
+                    >
+                        <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                            <Plus size={32} />
+                        </div>
+                        <span className="font-bold">Adicionar Novo</span>
+                    </button>
+                </div>
+            ) : (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                        <p className="text-sm text-gray-500">Defina a hierarquia e funções do seu time.</p>
+                        <button 
+                            onClick={() => setIsRoleModalOpen(true)}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-colors"
+                        >
+                            <Plus size={16} /> Novo Cargo
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4">
+                        {roles.map(role => (
+                            <div key={role.id} className="bg-white dark:bg-[#1e293b] p-4 rounded-xl border border-gray-200 dark:border-gray-700 flex items-center justify-between shadow-sm">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{backgroundColor: role.color}}>
+                                        {role.level}
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-gray-800 dark:text-white text-lg">{role.name}</h4>
+                                        <p className="text-xs text-gray-500">
+                                            {role.level === 3 ? 'Acesso Total (Admin)' : role.level === 2 ? 'Editor (Cria/Edita Tarefas)' : 'Visualizador (Somente Leitura)'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    {/* Prevent deleting default Admin role if needed, or handle in backend */}
+                                    <button onClick={() => handleDeleteRole(role.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                                        <Trash2 size={18} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Member Edit Modal */}
             <Modal isOpen={isMemberEditModalOpen} onClose={() => setIsMemberEditModalOpen(false)} title="Gerenciar Membro" maxWidth="max-w-md">
@@ -248,20 +300,14 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDelete
                         <div>
                             <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 uppercase tracking-wide">Cargo no Time</label>
                             <select 
-                                value={newRole}
-                                onChange={(e) => setNewRole(e.target.value)}
+                                value={newRoleName}
+                                onChange={(e) => setNewRoleName(e.target.value)}
                                 className="w-full p-3.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-[#0d1b2a] text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-sm"
                             >
-                                <option value="Admin">Admin (Controle Total)</option>
-                                <option value="Gestor">Gestor de Projetos</option>
-                                <option value="Analista">Analista Pleno</option>
-                                <option value="Desenvolvedor">Desenvolvedor</option>
-                                <option value="Designer">Designer UI/UX</option>
-                                <option value="Membro">Membro Observador</option>
+                                {roles.map(r => (
+                                    <option key={r.id} value={r.name}>{r.name} (Nível {r.level})</option>
+                                ))}
                             </select>
-                            <p className="mt-3 text-[11px] text-gray-500 dark:text-gray-400 italic bg-gray-50 dark:bg-[#0d1b2a] p-2 rounded">
-                                * Usuários com cargo <strong>Admin</strong> podem convidar membros, alterar cargos e deletar projetos.
-                            </p>
                         </div>
 
                         <div className="flex justify-end gap-3 pt-6">
@@ -277,15 +323,56 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDelete
                     </div>
                 )}
             </Modal>
+            
+            {/* Create Role Modal */}
+            <Modal isOpen={isRoleModalOpen} onClose={() => setIsRoleModalOpen(false)} title="Criar Novo Cargo" maxWidth="max-w-md">
+                 <form onSubmit={handleCreateRole} className="space-y-4">
+                     <div>
+                         <label className="block text-sm font-bold mb-1">Nome do Cargo</label>
+                         <input 
+                            required 
+                            placeholder="Ex: Tech Lead" 
+                            className="w-full p-2 border rounded" 
+                            value={newCustomRole.name} 
+                            onChange={(e) => setNewCustomRole({...newCustomRole, name: e.target.value})}
+                        />
+                     </div>
+                     <div>
+                         <label className="block text-sm font-bold mb-1">Nível de Permissão</label>
+                         <select 
+                            className="w-full p-2 border rounded"
+                            value={newCustomRole.level}
+                            onChange={(e) => setNewCustomRole({...newCustomRole, level: Number(e.target.value)})}
+                         >
+                             <option value={1}>Nível 1 - Visualizador (Somente Leitura)</option>
+                             <option value={2}>Nível 2 - Editor (Membro Padrão)</option>
+                             <option value={3}>Nível 3 - Admin (Gerenciamento Total)</option>
+                         </select>
+                     </div>
+                     <div>
+                         <label className="block text-sm font-bold mb-1">Cor da Identificação</label>
+                         <input 
+                            type="color" 
+                            className="w-full h-10 p-1 rounded cursor-pointer"
+                            value={newCustomRole.color}
+                            onChange={(e) => setNewCustomRole({...newCustomRole, color: e.target.value})}
+                         />
+                     </div>
+                     <div className="flex justify-end gap-2 pt-4">
+                         <button type="button" onClick={() => setIsRoleModalOpen(false)} className="px-4 py-2 text-gray-500">Cancelar</button>
+                         <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded font-bold">Criar Cargo</button>
+                     </div>
+                 </form>
+            </Modal>
 
-            {/* Invite Modal */}
+            {/* Invite Modal (Existing) */}
             <Modal isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} title="Convite de Equipe" maxWidth="max-w-lg">
                 <div className="space-y-6">
                     <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
                         <button 
-                            onClick={() => setActiveTab('email')}
+                            onClick={() => setInviteTab('email')}
                             className={`flex-1 py-2.5 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${
-                                activeTab === 'email' 
+                                inviteTab === 'email' 
                                 ? 'bg-white dark:bg-[#1e293b] text-indigo-600 shadow-sm' 
                                 : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
                             }`}
@@ -293,9 +380,9 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDelete
                             <Mail size={18} /> Por E-mail
                         </button>
                         <button 
-                            onClick={() => setActiveTab('code')}
+                            onClick={() => setInviteTab('code')}
                             className={`flex-1 py-2.5 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${
-                                activeTab === 'code' 
+                                inviteTab === 'code' 
                                 ? 'bg-white dark:bg-[#1e293b] text-indigo-600 shadow-sm' 
                                 : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
                             }`}
@@ -304,7 +391,7 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDelete
                         </button>
                     </div>
 
-                    {activeTab === 'email' && (
+                    {inviteTab === 'email' && (
                         <div className="animate-fade-in space-y-4">
                             <p className="text-sm text-gray-500 dark:text-gray-400">
                                 Envie um convite direto para a caixa de entrada do seu colega.
@@ -343,7 +430,7 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentTeam, onDelete
                         </div>
                     )}
 
-                    {activeTab === 'code' && (
+                    {inviteTab === 'code' && (
                         <div className="animate-fade-in space-y-8 text-center py-4">
                              <div className="bg-indigo-50 dark:bg-indigo-900/20 p-8 rounded-2xl border-2 border-dashed border-indigo-200 dark:border-indigo-800 shadow-inner">
                                  <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-3">Código de Acesso Único</p>
