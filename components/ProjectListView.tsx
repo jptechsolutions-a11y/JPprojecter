@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Task, TaskGroup, User, Status, Priority, Subtask } from '../types';
-import { ChevronDown, ChevronRight, Plus, Calendar, User as UserIcon, AlertCircle, CheckCircle2, Clock, CornerDownRight, ShieldCheck, ShieldAlert, Shield, Trash2, FolderX, Info, AlertTriangle } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Calendar, User as UserIcon, AlertCircle, CheckCircle2, Clock, CornerDownRight, ShieldCheck, ShieldAlert, Shield, Trash2, FolderX, Info, AlertTriangle, CheckSquare } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { api } from '../services/dataService';
 
@@ -25,6 +25,7 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
   onDeleteProject
 }) => {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
 
   const toggleGroup = (groupId: string) => {
     const newCollapsed = new Set(collapsedGroups);
@@ -34,6 +35,17 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
       newCollapsed.add(groupId);
     }
     setCollapsedGroups(newCollapsed);
+  };
+
+  const toggleTask = (taskId: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      const newExpanded = new Set(expandedTasks);
+      if (newExpanded.has(taskId)) {
+          newExpanded.delete(taskId);
+      } else {
+          newExpanded.add(taskId);
+      }
+      setExpandedTasks(newExpanded);
   };
 
   const getStatusColor = (status: Status) => {
@@ -62,38 +74,27 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
   };
 
   const calculateEffectiveDateRange = (task: Task) => {
-      // Se não tiver subtarefas, usa as datas da tarefa
       if (!task.subtasks || task.subtasks.length === 0) {
           return { start: task.startDate, end: task.dueDate };
       }
-
-      // Filtra datas válidas
       const startDates = task.subtasks.map(s => s.startDate).filter(d => d).sort();
       const endDates = task.subtasks.map(s => s.dueDate).filter(d => d).sort();
-
-      // Pega a menor data de início e a maior data de fim
       const start = startDates.length > 0 ? startDates[0] : task.startDate;
       const end = endDates.length > 0 ? endDates[endDates.length - 1] : task.dueDate;
-
       return { start, end };
   };
 
   const formatDateRange = (start?: string, end?: string) => {
       if (!start) return '-';
-      
-      // Ajuste de timezone simples para exibição correta (evita dia anterior)
       const parseDate = (dateStr: string) => {
           const parts = dateStr.split('T')[0].split('-');
           return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
       };
-
       const s = parseDate(start);
       const e = end ? parseDate(end) : null;
-      
       const sStr = s.toLocaleDateString('pt-BR', { month: 'short', day: 'numeric' });
       if (!e) return sStr;
       const eStr = e.toLocaleDateString('pt-BR', { month: 'short', day: 'numeric' });
-      
       return `${sStr} - ${eStr}`;
   };
 
@@ -107,11 +108,6 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
         const groupTasks = tasks.filter(t => t.groupId === group.id);
         const isCollapsed = collapsedGroups.has(group.id);
         
-        // Calculate Project Progress
-        const totalProgress = groupTasks.length > 0 
-            ? Math.round(groupTasks.reduce((acc, t) => acc + (t.progress || 0), 0) / groupTasks.length) 
-            : 0;
-        
         return (
           <div key={group.id} className="flex flex-col animate-fade-in">
             {/* Group Header */}
@@ -122,14 +118,6 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                 </button>
                 <h3 className="text-xl font-bold" style={{ color: group.color }}>{group.title}</h3>
                 
-                {/* Project Progress Bar in Header */}
-                <div className="flex items-center gap-2 ml-4">
-                    <div className="w-24 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                        <div className="h-full bg-green-500 transition-all duration-700" style={{ width: `${totalProgress}%` }}></div>
-                    </div>
-                    <span className="text-xs font-bold text-gray-500 dark:text-gray-400">{totalProgress}%</span>
-                </div>
-
                 <span className="text-gray-400 text-sm font-normal ml-2 hidden sm:inline">{groupTasks.length} tarefas</span>
               </div>
               <button 
@@ -143,87 +131,137 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
 
             {!isCollapsed && (
               <div className="bg-white dark:bg-[#0f172a] rounded-lg shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
-                {/* Table Header */}
+                {/* Table Header - Adjusted Layout */}
                 <div className="grid grid-cols-12 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-[#1b263b]/50 text-xs text-gray-500 dark:text-gray-400 h-10 items-center">
-                  <div className="col-span-5 px-4 border-r border-gray-200 dark:border-gray-800 pl-10">Tarefa</div>
+                  <div className="col-span-4 px-4 border-r border-gray-200 dark:border-gray-800 pl-10">Tarefa</div>
+                  <div className="col-span-2 px-2 border-r border-gray-200 dark:border-gray-800 text-center">Progresso</div>
                   <div className="col-span-2 text-center border-r border-gray-200 dark:border-gray-800">Status</div>
                   <div className="col-span-2 text-center border-r border-gray-200 dark:border-gray-800 flex items-center justify-center gap-1">Timeline <Info size={10}/></div>
                   <div className="col-span-1 text-center border-r border-gray-200 dark:border-gray-800">Duração</div>
-                  <div className="col-span-2 text-center">Esforço</div>
+                  <div className="col-span-1 text-center">Esforço</div>
                 </div>
 
                 {/* Rows */}
                 {groupTasks.map(task => {
                    const totalDuration = calculateTotalDuration(task.subtasks);
                    const { start: effectiveStart, end: effectiveEnd } = calculateEffectiveDateRange(task);
-                   const timelineWidth = Math.min(100, totalDuration * 5); // Visual hack for timeline pill width
+                   const timelineWidth = Math.min(100, totalDuration * 5); 
                    const deadlineInfo = getDeadlineStatus(task.dueDate, task.status);
+                   const isExpanded = expandedTasks.has(task.id);
+                   const hasSubtasks = task.subtasks && task.subtasks.length > 0;
 
                    return (
-                    <div key={task.id} className="grid grid-cols-12 h-14 items-center hover:bg-gray-50 dark:hover:bg-[#1e293b] transition-colors border-b border-gray-100 dark:border-gray-800 cursor-pointer text-sm" onClick={() => onTaskClick(task)}>
-                        {/* Title Column */}
-                        <div className="col-span-5 px-4 h-full flex items-center relative border-r border-gray-100 dark:border-gray-800 overflow-hidden">
-                            <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: group.color }}></div>
-                            <div className="pl-4 flex flex-col justify-center min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                    <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{task.title}</span>
-                                    {deadlineInfo && (
-                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold flex items-center gap-1 ${deadlineInfo.color}`}>
-                                            <deadlineInfo.icon size={10} /> {deadlineInfo.label}
-                                        </span>
+                    <React.Fragment key={task.id}>
+                        <div className="grid grid-cols-12 h-14 items-center hover:bg-gray-50 dark:hover:bg-[#1e293b] transition-colors border-b border-gray-100 dark:border-gray-800 cursor-pointer text-sm" onClick={() => onTaskClick(task)}>
+                            {/* Title Column */}
+                            <div className="col-span-4 px-4 h-full flex items-center relative border-r border-gray-100 dark:border-gray-800 overflow-hidden">
+                                <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: group.color }}></div>
+                                <div className="pl-4 flex items-center gap-2 min-w-0 flex-1">
+                                    {hasSubtasks && (
+                                        <button 
+                                            onClick={(e) => toggleTask(task.id, e)} 
+                                            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                                        >
+                                            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                        </button>
                                     )}
-                                </div>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <div className="w-16 h-1 bg-gray-200 dark:bg-gray-700 rounded-full">
-                                        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${task.progress}%` }}></div>
+                                    {!hasSubtasks && <div className="w-4"></div>} {/* Spacer */}
+                                    
+                                    <div className="flex flex-col truncate">
+                                        <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{task.title}</span>
+                                        {deadlineInfo && (
+                                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold flex items-center gap-1 w-fit mt-0.5 ${deadlineInfo.color}`}>
+                                                <deadlineInfo.icon size={10} /> {deadlineInfo.label}
+                                            </span>
+                                        )}
                                     </div>
-                                    <span className="text-[10px] text-gray-400">{task.progress}%</span>
-                                    {task.subtasks.length > 0 && (
-                                        <span className="text-[10px] text-gray-400 truncate ml-2">
-                                            • {task.subtasks.length} atividades
-                                        </span>
-                                    )}
                                 </div>
                             </div>
-                        </div>
 
-                        {/* Status Column */}
-                        <div className="col-span-2 px-2 border-r border-gray-100 dark:border-gray-800 flex items-center justify-center h-full">
-                            <div className={`w-full h-8 flex items-center justify-center text-white text-xs font-bold truncate ${getStatusColor(task.status)}`}>
-                                {task.status}
+                            {/* Progress Column (NEW) */}
+                            <div className="col-span-2 px-4 border-r border-gray-100 dark:border-gray-800 flex items-center justify-center h-full">
+                                <div className="w-full flex items-center gap-2">
+                                    <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                        <div 
+                                            className={`h-full rounded-full transition-all duration-500 ${task.progress === 100 ? 'bg-green-500' : 'bg-indigo-500'}`} 
+                                            style={{ width: `${task.progress}%` }}
+                                        ></div>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 w-8 text-right">{task.progress}%</span>
+                                </div>
+                            </div>
+
+                            {/* Status Column */}
+                            <div className="col-span-2 px-2 border-r border-gray-100 dark:border-gray-800 flex items-center justify-center h-full">
+                                <div className={`w-full h-8 flex items-center justify-center text-white text-xs font-bold truncate ${getStatusColor(task.status)}`}>
+                                    {task.status}
+                                </div>
+                            </div>
+
+                            {/* Timeline Column */}
+                            <div className="col-span-2 px-4 border-r border-gray-100 dark:border-gray-800 flex flex-col justify-center items-center h-full">
+                                 <div className="w-full h-6 rounded-full bg-gray-200 dark:bg-gray-700 relative overflow-hidden flex items-center justify-center group/timeline">
+                                     <div 
+                                        className="absolute left-0 top-0 bottom-0 bg-[#00b4d8] opacity-70 rounded-full" 
+                                        style={{ width: `${timelineWidth}%` }}
+                                     ></div>
+                                     <span className="relative z-10 text-[10px] font-bold text-gray-700 dark:text-white px-2 truncate">
+                                         {formatDateRange(effectiveStart, effectiveEnd)}
+                                     </span>
+                                 </div>
+                            </div>
+
+                            {/* Duration Column */}
+                            <div className="col-span-1 border-r border-gray-100 dark:border-gray-800 text-center text-gray-600 dark:text-gray-400 text-xs">
+                                {totalDuration} dias
+                            </div>
+
+                            {/* Effort Column */}
+                            <div className="col-span-1 flex items-center justify-center h-full text-center">
+                                 <span className="text-xs font-bold text-gray-500 dark:text-gray-400">{totalDuration * 8}h</span>
                             </div>
                         </div>
 
-                        {/* Timeline Column */}
-                        <div className="col-span-2 px-4 border-r border-gray-100 dark:border-gray-800 flex flex-col justify-center items-center h-full">
-                             <div className="w-full h-6 rounded-full bg-gray-200 dark:bg-gray-700 relative overflow-hidden flex items-center justify-center group/timeline">
-                                 <div 
-                                    className="absolute left-0 top-0 bottom-0 bg-[#00b4d8] opacity-70 rounded-full" 
-                                    style={{ width: `${timelineWidth}%` }}
-                                 ></div>
-                                 <span className="relative z-10 text-[10px] font-bold text-gray-700 dark:text-white px-2 truncate">
-                                     {formatDateRange(effectiveStart, effectiveEnd)}
-                                 </span>
-                             </div>
-                        </div>
-
-                        {/* Duration Column */}
-                        <div className="col-span-1 border-r border-gray-100 dark:border-gray-800 text-center text-gray-600 dark:text-gray-400 text-xs">
-                            {totalDuration} dias
-                        </div>
-
-                        {/* Effort Column */}
-                        <div className="col-span-2 flex items-center h-full">
-                             <div className="flex-1 h-full flex flex-col justify-center items-center border-r border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-black/20">
-                                 <span className="text-xs font-bold text-gray-500 dark:text-gray-400">Previsto</span>
-                                 <span className="text-xs font-bold text-gray-800 dark:text-gray-200">{totalDuration * 8}h</span>
-                             </div>
-                             <div className="flex-1 h-full flex flex-col justify-center items-center">
-                                 <span className="text-xs font-bold text-gray-500 dark:text-gray-400">Real</span>
-                                 <span className="text-xs font-bold text-gray-800 dark:text-gray-200">-</span> 
-                             </div>
-                        </div>
-                    </div>
+                        {/* Subtasks Expanded View */}
+                        {isExpanded && hasSubtasks && (
+                            <div className="bg-gray-50 dark:bg-[#021221] border-b border-gray-200 dark:border-gray-700 shadow-inner">
+                                <div className="grid grid-cols-12 text-[10px] uppercase font-bold text-gray-400 tracking-wider py-2 border-b border-gray-200 dark:border-gray-700 px-4">
+                                    <div className="col-span-6 pl-14">Atividade</div>
+                                    <div className="col-span-2 text-center">Status</div>
+                                    <div className="col-span-2 text-center">Prazo</div>
+                                    <div className="col-span-2 text-center">Responsável</div>
+                                </div>
+                                {task.subtasks.map(sub => (
+                                    <div key={sub.id} className="grid grid-cols-12 py-2 px-4 items-center hover:bg-gray-100 dark:hover:bg-[#1b263b] transition-colors border-b border-gray-100 dark:border-gray-800/50 last:border-0">
+                                        <div className="col-span-6 pl-14 flex items-center gap-2">
+                                            <CornerDownRight size={12} className="text-gray-400" />
+                                            <span className={`text-sm text-gray-700 dark:text-gray-300 ${sub.completed ? 'line-through opacity-50' : ''}`}>{sub.title}</span>
+                                        </div>
+                                        <div className="col-span-2 flex justify-center">
+                                            {sub.completed ? (
+                                                <span className="flex items-center gap-1 text-[10px] text-green-600 bg-green-100 px-2 py-0.5 rounded font-bold">
+                                                    <CheckCircle2 size={10} /> Feito
+                                                </span>
+                                            ) : (
+                                                <span className="flex items-center gap-1 text-[10px] text-gray-500 bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded font-bold">
+                                                    Pendente
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="col-span-2 text-center text-xs text-gray-500 dark:text-gray-400">
+                                            {sub.dueDate ? new Date(sub.dueDate).toLocaleDateString() : '-'}
+                                        </div>
+                                        <div className="col-span-2 flex justify-center">
+                                            {/* Logic to show assignee avatar if supported in Subtask type, defaulting to task assignee or unassigned */}
+                                            <div className="w-5 h-5 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-[8px] text-white">
+                                                ?
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </React.Fragment>
                   );
                 })}
 
