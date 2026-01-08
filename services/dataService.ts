@@ -301,14 +301,50 @@ export const api = {
   },
 
   uploadAttachment: async (taskId: string, file: File) => {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${taskId}/${Math.random()}.${fileExt}`;
-      const filePath = `attachments/${fileName}`;
-      const { error: uploadError } = await supabase.storage.from('attachments').upload(filePath, file);
-      if (uploadError) return null;
-      const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(filePath);
-      const { data: attData, error: dbError } = await supabase.from('attachments').insert({ task_id: taskId, name: file.name, url: publicUrl, type: file.type.includes('image') ? 'image' : 'file' }).select().single();
-      return dbError ? null : attData;
+      try {
+          const fileExt = file.name.split('.').pop();
+          // Use timestamp for uniqueness and clean name
+          const fileName = `${taskId}/${Date.now()}_${Math.floor(Math.random() * 1000)}.${fileExt}`;
+          
+          // Upload to 'attachments' bucket
+          const { error: uploadError } = await supabase.storage
+              .from('attachments')
+              .upload(fileName, file, {
+                  cacheControl: '3600',
+                  upsert: false
+              });
+
+          if (uploadError) {
+              console.error("Erro no upload Supabase (Storage):", uploadError);
+              alert(`Erro no upload: ${uploadError.message}. Verifique se o bucket 'attachments' foi criado.`);
+              return null;
+          }
+
+          const { data: { publicUrl } } = supabase.storage
+              .from('attachments')
+              .getPublicUrl(fileName);
+
+          const { data: attData, error: dbError } = await supabase
+              .from('attachments')
+              .insert({ 
+                  task_id: taskId, 
+                  name: file.name, 
+                  url: publicUrl, 
+                  type: file.type.includes('image') ? 'image' : 'file' 
+              })
+              .select()
+              .single();
+              
+          if (dbError) {
+              console.error("Erro ao salvar metadados do anexo no banco:", dbError);
+              return null;
+          }
+
+          return attData;
+      } catch (e) {
+          console.error("Exceção no upload:", e);
+          return null;
+      }
   },
 
   deleteAttachment: async (id: string) => {
