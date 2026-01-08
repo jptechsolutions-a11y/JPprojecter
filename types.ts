@@ -86,6 +86,7 @@ export interface Task {
   description: string;
   status: Status;
   priority: Priority;
+  kanbanColumnId?: string; // Novo campo para posição visual no Kanban
   assigneeId?: string;
   supportIds?: string[];
   startDate?: string;

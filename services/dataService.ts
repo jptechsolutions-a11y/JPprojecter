@@ -24,6 +24,7 @@ const mapTask = (t: any): Task => ({
   description: t.description || '',
   status: t.status,
   priority: t.priority,
+  kanbanColumnId: t.kanban_column_id, // Mapped Visual Column ID
   assigneeId: t.assignee_id,
   supportIds: t.support_ids || [],
   startDate: t.start_date,
@@ -66,10 +67,10 @@ const mapTask = (t: any): Task => ({
 // --- Constants ---
 // Usamos IDs fixos se o banco falhar, mas idealmente o banco fornece UUIDs.
 const DEFAULT_COLUMNS = [
-  { id: 'a-fazer', title: 'A Fazer', color: 'bg-gray-100 dark:bg-gray-800' },
-  { id: 'em-progresso', title: 'Em Progresso', color: 'bg-blue-100 dark:bg-blue-900/30' },
-  { id: 'revisao', title: 'Revisão', color: 'bg-purple-100 dark:bg-purple-900/30' },
-  { id: 'concluido', title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30' }
+  { id: 'backlog', title: 'Tarefas (Entrada)', color: 'bg-gray-100 dark:bg-gray-800' },
+  { id: 'prioridade', title: 'Prioridade', color: 'bg-blue-100 dark:bg-blue-900/30' },
+  { id: 'analise', title: 'Em Análise', color: 'bg-purple-100 dark:bg-purple-900/30' },
+  { id: 'finalizado', title: 'Finalizado Visual', color: 'bg-green-100 dark:bg-green-900/30' }
 ];
 
 export const api = {
@@ -397,13 +398,15 @@ export const api = {
     // GARANTIA: Se o status for um título (ex: "A Fazer"), mas temos colunas no banco com IDs UUID, isso falharia.
     // O Front já tenta enviar o ID, mas aqui fazemos uma última verificação se possível, ou confiamos no front.
     
+    // NOTA: kanban_column_id é opcional se o banco não tiver, mas tentamos passar.
     const { data: taskData, error: taskError } = await supabase.from('tasks').insert({
       team_id: task.teamId, 
       group_id: task.groupId, 
       title: task.title,
       description: task.description, 
-      status: task.status, // Deve ser um ID válido de coluna
+      status: task.status, 
       priority: task.priority,
+      kanban_column_id: task.kanbanColumnId, // Salva a posição visual
       assignee_id: task.assigneeId, 
       start_date: task.startDate, 
       due_date: task.dueDate
@@ -436,8 +439,9 @@ export const api = {
   updateTask: async (task: Task) => {
     const dbUpdates: any = {
       group_id: task.groupId, title: task.title, description: task.description,
-      status: task.status, // Deve ser UUID se o banco exigir
-      priority: task.priority, 
+      status: task.status,
+      priority: task.priority,
+      kanban_column_id: task.kanbanColumnId, // Salva a posição visual
       assignee_id: task.assigneeId || null, 
       support_ids: task.supportIds ?? [],   
       progress: task.progress, approval_status: task.approvalStatus, approver_id: task.approverId,

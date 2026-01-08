@@ -38,6 +38,15 @@ const TaskCard: React.FC<{ task: Task; allUsers: User[]; onClick: () => void; on
     'Alta': 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-200 border-red-200 dark:border-red-800',
   };
 
+  const statusColors: Record<string, string> = {
+      'A Fazer': 'bg-gray-100 text-gray-700 border-gray-200',
+      'Em Progresso': 'bg-blue-100 text-blue-700 border-blue-200',
+      'Em Pausa': 'bg-orange-100 text-orange-700 border-orange-200',
+      'Revisão': 'bg-purple-100 text-purple-700 border-purple-200',
+      'Concluído': 'bg-green-100 text-green-700 border-green-200',
+      'Cancelado': 'bg-red-100 text-red-700 border-red-200',
+  };
+
   const completedSubtasks = task.subtasks.filter(s => s.completed).length;
 
   const getDeadlineStatus = () => {
@@ -85,13 +94,19 @@ const TaskCard: React.FC<{ task: Task; allUsers: User[]; onClick: () => void; on
         {task.title}
       </h3>
       
-      {deadline && (
-          <div className={`flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded mb-2 w-fit ${deadline.color}`}>
-              <deadline.icon size={10} /> {deadline.label}
+      <div className="flex flex-wrap gap-1 mb-2">
+          {deadline && (
+              <div className={`flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded w-fit ${deadline.color}`}>
+                  <deadline.icon size={10} /> {deadline.label}
+              </div>
+          )}
+          {/* Mostra o Status real da tarefa, pois a coluna é só visual */}
+          <div className={`text-[9px] font-bold px-1.5 py-0.5 rounded border w-fit ${statusColors[task.status] || 'bg-gray-100 border-gray-200'}`}>
+              {task.status}
           </div>
-      )}
+      </div>
       
-      <div className="w-full bg-gray-100 dark:bg-gray-700 h-1 rounded-full mt-2 mb-2 overflow-hidden">
+      <div className="w-full bg-gray-100 dark:bg-gray-700 h-1 rounded-full mt-1 mb-2 overflow-hidden">
         <div 
             className={`h-full rounded-full transition-all duration-500 ${task.progress === 100 ? 'bg-teal-500' : 'bg-[#00b4d8]'}`} 
             style={{ width: `${task.progress}%` }}
@@ -302,11 +317,18 @@ export default function App() {
       }
   };
 
-  const handleDeleteColumn = async (columnId: string) => {
-      if (!confirm("Excluir esta lista? As tarefas não serão apagadas, mas ficarão sem status visual.")) return;
+  const handleDeleteColumn = async (columnId: string, index: number) => {
+      // Prevent deleting the first column (default/inbox)
+      if (index === 0) {
+          alert("A primeira coluna é a lista padrão e não pode ser excluída.");
+          return;
+      }
+      if (!confirm("Excluir esta lista? Tarefas nesta lista ficarão visíveis na primeira coluna.")) return;
+      
       const success = await api.deleteColumn(columnId);
       if (success) {
           setColumns(columns.filter(c => c.id !== columnId));
+          // Reset tasks in this column to show up in default (handled by render logic implicitly)
       }
   };
 
@@ -356,7 +378,7 @@ export default function App() {
 
     const formData = new FormData(e.currentTarget);
     const title = formData.get('title') as string;
-    const status = formData.get('status') as Status; // This gets the ID now
+    const status = formData.get('status') as Status; 
     const groupId = formData.get('groupId') as string;
     
     const actualGroupId = groupId || (currentGroups.length > 0 ? currentGroups[0].id : '');
@@ -369,15 +391,16 @@ export default function App() {
 
     const calculatedDueDate = calculateEndDate();
     
-    // Ensure we use a valid ID. If empty, use the first available column ID.
-    const initialStatus = status || (columns.length > 0 ? columns[0].id : '');
+    // Default Kanban Column is the first one available
+    const defaultKanbanColumnId = columns.length > 0 ? columns[0].id : undefined;
 
     const tempId = crypto.randomUUID();
     const newTask: Task = {
       id: tempId, // Temporary ID
       groupId: actualGroupId, 
       title, 
-      status: initialStatus, 
+      status: status || 'A Fazer', 
+      kanbanColumnId: defaultKanbanColumnId, // Set Default Column
       description: '', 
       priority: 'Média',
       startDate: newTaskStartDate,
@@ -555,9 +578,14 @@ export default function App() {
            {activeView === 'board' && (
                <div className="h-full overflow-x-auto overflow-y-hidden whitespace-nowrap p-4 bg-[#0079bf] dark:bg-[#021221] bg-opacity-10 dark:bg-opacity-100">
                  <div className="flex h-full gap-4 items-start">
-                     {columns.map(column => {
-                       // Mapeia tanto pelo ID quanto pelo Title para suportar dados legados
-                       const columnTasks = filteredTasks.filter(t => (t.status === column.id || t.status === column.title));
+                     {columns.map((column, index) => {
+                       // Logic change: Filter based on kanbanColumnId, OR if task is new (no columnId) and this is the first column
+                       const columnTasks = filteredTasks.filter(t => {
+                           if (t.kanbanColumnId) return t.kanbanColumnId === column.id;
+                           // Fallback logic for legacy/new tasks: if no column ID, put in first column
+                           return index === 0;
+                       });
+
                        return (
                          <div 
                             key={column.id} 
@@ -567,9 +595,10 @@ export default function App() {
                                 e.preventDefault();
                                 const taskId = e.dataTransfer.getData('taskId');
                                 const task = tasks.find(t => t.id === taskId);
-                                // FIX: Use column.id strictly to satisfy Foreign Key. The DB expects ID, not title.
-                                if(task && task.status !== column.id) {
-                                    handleUpdateTask({ ...task, status: column.id });
+                                
+                                // FIX: Update only kanbanColumnId, NOT status.
+                                if(task && task.kanbanColumnId !== column.id) {
+                                    handleUpdateTask({ ...task, kanbanColumnId: column.id });
                                 }
                             }}
                          >
@@ -579,11 +608,13 @@ export default function App() {
                                 <span className="truncate">{column.title}</span>
                                 <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-1.5 py-0.5 rounded text-[10px]">{columnTasks.length}</span>
                              </div>
-                             <div className="flex items-center">
-                                 <button onClick={() => handleDeleteColumn(column.id)} className="p-1 text-gray-400 hover:text-red-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors">
-                                     <Trash2 size={12} />
-                                 </button>
-                             </div>
+                             {index !== 0 && ( // Prevent deleting the first column
+                                 <div className="flex items-center">
+                                     <button onClick={() => handleDeleteColumn(column.id, index)} className="p-1 text-gray-400 hover:text-red-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors">
+                                         <Trash2 size={12} />
+                                     </button>
+                                 </div>
+                             )}
                            </div>
                            
                            {/* Cards Container */}
@@ -678,8 +709,11 @@ export default function App() {
              <div className="flex-1">
                 <label className="block text-sm font-bold mb-1 dark:text-gray-300">Status Inicial</label>
                 <select name="status" className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-[#1e293b] border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white outline-none">
-                    {/* FIX: Use c.id as value, not title, to satisfy Foreign Key */}
-                    {columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                    <option value="A Fazer">A Fazer</option>
+                    <option value="Em Progresso">Em Progresso</option>
+                    <option value="Em Pausa">Em Pausa</option>
+                    <option value="Revisão">Revisão</option>
+                    <option value="Concluído">Concluído</option>
                 </select>
              </div>
           </div>
