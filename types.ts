@@ -96,6 +96,7 @@ export interface Task {
   attachments: Attachment[];
   comments: Comment[];
   createdAt: string;
+  updatedAt?: string;
   startedAt?: string;   
   completedAt?: string; 
   teamId: string;

@@ -25,12 +25,13 @@ const mapTask = (t: any): Task => ({
   status: t.status,
   priority: t.priority,
   assigneeId: t.assignee_id,
-  supportIds: t.support_ids || [], // Garante array vazio se null
+  supportIds: t.support_ids || [],
   startDate: t.start_date,
   dueDate: t.due_date,
   tags: t.tags || [],
   progress: t.progress || 0,
   createdAt: t.created_at,
+  updatedAt: t.updated_at,
   startedAt: t.started_at,
   completedAt: t.completed_at,
   teamId: t.team_id,
@@ -392,11 +393,12 @@ export const api = {
     const dbUpdates: any = {
       group_id: task.groupId, title: task.title, description: task.description,
       status: task.status, priority: task.priority, 
-      assignee_id: task.assigneeId || null, // Force null if undefined to clear
-      support_ids: task.supportIds ?? [],   // Force empty array if undefined (use nullish coalescing)
+      assignee_id: task.assigneeId || null, 
+      support_ids: task.supportIds ?? [],   
       progress: task.progress, approval_status: task.approvalStatus, approver_id: task.approverId,
       start_date: task.startDate, due_date: task.dueDate,
-      started_at: task.startedAt, completed_at: task.completedAt
+      started_at: task.startedAt, completed_at: task.completedAt,
+      updated_at: new Date().toISOString() // Adiciona data de atualização explicitamente
     };
 
     const { error } = await supabase.from('tasks').update(dbUpdates).eq('id', task.id);
