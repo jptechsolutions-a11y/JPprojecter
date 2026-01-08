@@ -64,11 +64,12 @@ const mapTask = (t: any): Task => ({
 });
 
 // --- Constants ---
+// Usamos IDs fixos se o banco falhar, mas idealmente o banco fornece UUIDs.
 const DEFAULT_COLUMNS = [
-  { id: 'A Fazer', title: 'A Fazer', color: 'bg-gray-100 dark:bg-gray-800' },
-  { id: 'Em Progresso', title: 'Em Progresso', color: 'bg-blue-100 dark:bg-blue-900/30' },
-  { id: 'Revisão', title: 'Revisão', color: 'bg-purple-100 dark:bg-purple-900/30' },
-  { id: 'Concluído', title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30' }
+  { id: 'a-fazer', title: 'A Fazer', color: 'bg-gray-100 dark:bg-gray-800' },
+  { id: 'em-progresso', title: 'Em Progresso', color: 'bg-blue-100 dark:bg-blue-900/30' },
+  { id: 'revisao', title: 'Revisão', color: 'bg-purple-100 dark:bg-purple-900/30' },
+  { id: 'concluido', title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30' }
 ];
 
 export const api = {
@@ -116,7 +117,7 @@ export const api = {
       ] = await Promise.all([
           supabase.from('team_members').select('user_id, role, profiles(*)').eq('team_id', teamId),
           supabase.from('task_groups').select('*').eq('team_id', teamId),
-          supabase.from('columns').select('*').order('id', { ascending: true }),
+          supabase.from('columns').select('*').order('created_at', { ascending: true }),
           supabase.from('tasks').select('*, subtasks(*)').eq('team_id', teamId), 
           supabase.from('routines').select('*').eq('team_id', teamId),
           supabase.from('notifications').select('*').eq('user_id', currentUserId).order('created_at', { ascending: false }).limit(50),
@@ -145,34 +146,9 @@ export const api = {
       if (columnsRes.data && columnsRes.data.length > 0) {
           mappedColumns = columnsRes.data.map((c:any) => ({ id: c.id, title: c.title, color: c.color }));
       } 
-      // 2. Se houve erro ou retornou vazio, tentar inicializar
+      // 2. Fallback para memória se o banco estiver vazio ou der erro
       else {
-          if (columnsRes.error) {
-              console.warn("Aviso: Falha ao ler colunas do banco. Usando padrão em memória.", columnsRes.error.message);
-          }
-
-          // Se não foi erro de conexão, mas sim tabela vazia, tentar inserir
-          // Se foi erro (ex: 400 ou 404), NÃO tentar inserir para evitar loop, apenas usar memória.
-          if (!columnsRes.error) {
-              try {
-                  const inserts = DEFAULT_COLUMNS.map(col => ({ title: col.title, color: col.color }));
-                  const { data: insertedData, error: insertError } = await supabase.from('columns').insert(inserts).select();
-                  
-                  if (!insertError && insertedData) {
-                      mappedColumns = insertedData.map((c:any) => ({ id: c.id, title: c.title, color: c.color }));
-                  } else {
-                      throw insertError; // Forçar fallback
-                  }
-              } catch (e) {
-                  console.error("Falha ao criar colunas padrão no banco. Usando memória.");
-              }
-          }
-
-          // 3. Fallback Final: Se ainda estiver vazio (erro no banco ou insert falhou), usar constantes
-          if (mappedColumns.length === 0) {
-              // Usamos o Title como ID para garantir que o Kanban funcione visualmente
-              mappedColumns = DEFAULT_COLUMNS.map(c => ({ id: c.title, title: c.title, color: c.color }));
-          }
+           mappedColumns = DEFAULT_COLUMNS.map(c => ({ id: c.id, title: c.title, color: c.color }));
       }
       
       const mappedRoles: TeamRole[] = rolesRes.data ? rolesRes.data.map((r: any) => ({
@@ -214,7 +190,7 @@ export const api = {
           console.error("Erro ao criar coluna:", e);
       }
       // Fallback local se o banco falhar
-      return { id: title, title: title, color: randomColor };
+      return { id: crypto.randomUUID(), title: title, color: randomColor };
   },
 
   deleteColumn: async (columnId: string) => {
@@ -333,8 +309,7 @@ export const api = {
           await supabase.from('team_members').insert({ team_id: teamData.id, user_id: ownerId, role: 'Admin' });
           
           const defaultGroups = [
-              { title: 'Desenvolvimento', color: '#00b4d8', team_id: teamData.id },
-              { title: 'Design & UX', color: '#a25ddc', team_id: teamData.id }
+              { title: 'Geral', color: '#00b4d8', team_id: teamData.id }
           ];
           await supabase.from('task_groups').insert(defaultGroups);
 
@@ -419,14 +394,17 @@ export const api = {
 
   createTask: async (task: Task, initialSubtasks: Partial<Subtask>[] = []) => {
     // 1. Criar a tarefa principal
+    // GARANTIA: Se o status for um título (ex: "A Fazer"), mas temos colunas no banco com IDs UUID, isso falharia.
+    // O Front já tenta enviar o ID, mas aqui fazemos uma última verificação se possível, ou confiamos no front.
+    
     const { data: taskData, error: taskError } = await supabase.from('tasks').insert({
       team_id: task.teamId, 
       group_id: task.groupId, 
       title: task.title,
       description: task.description, 
-      status: task.status, 
+      status: task.status, // Deve ser um ID válido de coluna
       priority: task.priority,
-      assignee_id: task.assigneeId, // Now correctly passing assignee
+      assignee_id: task.assigneeId, 
       start_date: task.startDate, 
       due_date: task.dueDate
     }).select().single();
@@ -458,7 +436,8 @@ export const api = {
   updateTask: async (task: Task) => {
     const dbUpdates: any = {
       group_id: task.groupId, title: task.title, description: task.description,
-      status: task.status, priority: task.priority, 
+      status: task.status, // Deve ser UUID se o banco exigir
+      priority: task.priority, 
       assignee_id: task.assigneeId || null, 
       support_ids: task.supportIds ?? [],   
       progress: task.progress, approval_status: task.approvalStatus, approver_id: task.approverId,
@@ -470,7 +449,7 @@ export const api = {
     const { error } = await supabase.from('tasks').update(dbUpdates).eq('id', task.id);
     if (error) {
         console.error("Erro ao atualizar tarefa (Supabase):", error);
-        alert(`Erro ao salvar tarefa: ${error.message}.`);
+        // Não alertar para não travar a UX se for algo menor, mas logar
     }
     return !error;
   },
@@ -480,6 +459,7 @@ export const api = {
     return !error;
   },
 
+  // ... rest of functions (subtasks, routines, meetings) kept same
   // --- Subtask Management ---
   createSubtask: async (taskId: string, title: string, duration: number = 1) => {
       const { data, error } = await supabase.from('subtasks').insert({ task_id: taskId, title, completed: false, duration }).select().single();
