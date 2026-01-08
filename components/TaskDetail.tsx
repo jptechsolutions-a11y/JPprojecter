@@ -1,10 +1,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Task, User, Priority, Status, Subtask, Attachment, Comment, Column, ApprovalStatus } from '../types';
-import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2, AlertTriangle, Layout } from 'lucide-react';
+import { Task, User, Priority, Status, Subtask, Attachment, Comment, Column, ApprovalStatus, TaskTimelineEntry } from '../types';
+import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2, AlertTriangle, Layout, PlayCircle, CheckCircle2, PauseCircle, XCircle } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { generateSubtasks, generateTaskDescription } from '../services/geminiService';
 import { api } from '../services/dataService';
+import { Modal } from './Modal';
 
 interface TaskDetailProps {
   task: Task;
@@ -20,10 +21,13 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
   const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
   const [isGeneratingSubs, setIsGeneratingSubs] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [commentText, setCommentText] = useState('');
-  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Status Change Logic
+  const [showStatusReasonModal, setShowStatusReasonModal] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const [statusReason, setStatusReason] = useState('');
+  
   const priorities: Priority[] = ['Baixa', 'Média', 'Alta'];
 
   // Helper para verificar prazo
@@ -32,9 +36,8 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
     const today = new Date();
     today.setHours(0,0,0,0);
     const due = new Date(task.dueDate);
-    due.setHours(0,0,0,0); // Normaliza para comparar apenas datas
+    due.setHours(0,0,0,0); 
     
-    // Diferença em milissegundos
     const diffTime = due.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
@@ -46,10 +49,76 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
 
   const deadlineAlert = getDeadlineAlert();
 
+  // Handle Status Change manually via dropdown
+  const handleStatusChange = (newStatus: string) => {
+      // If manual change to Cancelled or Paused, require reason
+      if (newStatus === 'Cancelado' || newStatus === 'Em Pausa') {
+          setPendingStatus(newStatus);
+          setShowStatusReasonModal(true);
+      } else if (task.status === 'Em Pausa' && newStatus === 'Em Progresso') {
+          // Resume
+          updateTaskStatus(newStatus, 'Retomado');
+      } else {
+          // Normal change
+          updateTaskStatus(newStatus);
+      }
+  };
+
+  const confirmStatusChange = () => {
+      if (pendingStatus) {
+          updateTaskStatus(pendingStatus, statusReason);
+          setShowStatusReasonModal(false);
+          setPendingStatus(null);
+          setStatusReason('');
+      }
+  };
+
+  const updateTaskStatus = async (status: string, reason?: string) => {
+      const now = new Date().toISOString();
+      const updates: Partial<Task> = { status };
+      let eventType = 'status_change';
+      
+      if (status === 'Em Progresso' && !task.startedAt) {
+          updates.startedAt = now;
+          eventType = 'started';
+      }
+      if (status === 'Concluído' && !task.completedAt) {
+          updates.completedAt = now;
+          eventType = 'completed';
+      }
+      if (status === 'Em Pausa') eventType = 'paused';
+      if (status === 'Cancelado') eventType = 'cancelled';
+      if (status === 'Em Progresso' && task.status === 'Em Pausa') eventType = 'resumed';
+
+      // Update Local
+      const updatedTask = { ...task, ...updates };
+      
+      // Update Timeline Local (Optimistic)
+      const newTimelineEntry: TaskTimelineEntry = {
+          id: crypto.randomUUID(),
+          taskId: task.id,
+          eventType: eventType as any,
+          oldStatus: task.status,
+          newStatus: status,
+          reason: reason,
+          createdAt: now,
+          userName: currentUser.name,
+          userAvatar: currentUser.avatar
+      };
+      
+      const newTimeline = task.timeline ? [...task.timeline, newTimelineEntry] : [newTimelineEntry];
+      onUpdate({ ...updatedTask, timeline: newTimeline });
+
+      // API Call
+      await api.updateTask(updatedTask);
+      await api.logTimelineEvent(task.id, eventType, status, task.status, reason);
+  };
+
   const handleAiDescription = async () => {
     setIsGeneratingDesc(true);
     const desc = await generateTaskDescription(task.title);
     onUpdate({ ...task, description: desc });
+    await api.updateTask({ ...task, description: desc });
     setIsGeneratingDesc(false);
   };
 
@@ -57,7 +126,6 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
     setIsGeneratingSubs(true);
     const newSubtaskTitles = await generateSubtasks(task.title, task.description);
     
-    // Create subtasks one by one to ensure IDs
     const createdSubtasks = [];
     for (const title of newSubtaskTitles) {
         const res = await api.createSubtask(task.id, title);
@@ -73,12 +141,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
     
     if (createdSubtasks.length > 0) {
         const updatedSubtasks = [...task.subtasks, ...createdSubtasks];
-        // Recalculate progress logic here if needed, usually new tasks are 0% so progress drops
-        const total = updatedSubtasks.length;
-        const completed = updatedSubtasks.filter(s => s.completed).length;
-        const newProgress = total === 0 ? 0 : Math.round((completed / total) * 100);
-
-        onUpdate({ ...task, subtasks: updatedSubtasks, progress: newProgress });
+        onUpdate({ ...task, subtasks: updatedSubtasks }); // Progress recalc is handled in toggleSubtask logic usually, but here just adding
     }
     setIsGeneratingSubs(false);
   };
@@ -87,41 +150,72 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
     const subtask = task.subtasks.find(st => st.id === subtaskId);
     if (subtask) {
         const newCompleted = !subtask.completed;
-        
-        // Optimistic update of subtasks list
+        const now = new Date().toISOString();
+
+        // 1. Optimistic Subtask Update
         const updatedSubtasks = task.subtasks.map(st => 
-          st.id === subtaskId ? { ...st, completed: newCompleted } : st
+          st.id === subtaskId ? { ...st, completed: newCompleted, completedAt: newCompleted ? now : undefined } : st
         );
 
-        // Auto-Calculate Progress
+        // 2. Auto-Calculate Progress
         const total = updatedSubtasks.length;
         const completedCount = updatedSubtasks.filter(s => s.completed).length;
         const newProgress = total === 0 ? 0 : Math.round((completedCount / total) * 100);
 
-        // Update task with new subtasks AND new progress
-        onUpdate({ ...task, subtasks: updatedSubtasks, progress: newProgress });
+        // 3. Auto-Status Logic
+        let newStatus = task.status;
+        let eventType = 'subtask_update';
+        let reason = `Atividade "${subtask.title}" ${newCompleted ? 'concluída' : 'reaberta'}`;
+
+        if (newCompleted && task.status === 'A Fazer') {
+             newStatus = 'Em Progresso';
+             eventType = 'started';
+             reason = `Tarefa iniciada automaticamente pela atividade "${subtask.title}"`;
+        } else if (newProgress === 100 && task.status !== 'Concluído') {
+             newStatus = 'Concluído';
+             eventType = 'completed';
+             reason = 'Todas as atividades concluídas';
+        } else if (!newCompleted && newProgress < 100 && task.status === 'Concluído') {
+             newStatus = 'Em Progresso';
+             eventType = 'resumed';
+             reason = 'Tarefa reaberta (atividade pendente)';
+        }
+
+        const taskUpdates: any = { 
+            subtasks: updatedSubtasks, 
+            progress: newProgress,
+            status: newStatus
+        };
+
+        if (newStatus === 'Em Progresso' && !task.startedAt) taskUpdates.startedAt = now;
+        if (newStatus === 'Concluído' && !task.completedAt) taskUpdates.completedAt = now;
+        if (newStatus !== 'Concluído') taskUpdates.completedAt = null; // Reset completion date if reopened
+
+        // Update Timeline
+        const newTimelineEntry: TaskTimelineEntry = {
+            id: crypto.randomUUID(),
+            taskId: task.id,
+            eventType: eventType as any,
+            newStatus: newStatus,
+            oldStatus: task.status,
+            reason: reason,
+            createdAt: now,
+            userName: currentUser.name,
+            userAvatar: currentUser.avatar
+        };
+        const newTimeline = task.timeline ? [...task.timeline, newTimelineEntry] : [newTimelineEntry];
+
+        onUpdate({ ...task, ...taskUpdates, timeline: newTimeline });
         
-        // API calls (fire and forget / separate async)
+        // API calls
         await api.updateSubtask(subtaskId, { completed: newCompleted });
-        await api.updateTask({ ...task, progress: newProgress }); // Persist progress to DB
+        await api.updateTask({ ...task, ...taskUpdates }); // Persist task status/progress
+        await api.logTimelineEvent(task.id, eventType, newStatus, task.status, reason);
     }
   };
 
-  const handleSubtaskChange = async (subtaskId: string, field: keyof Subtask, value: any) => {
-      // Optimistic
-      const updatedSubtasks = task.subtasks.map(st => 
-          st.id === subtaskId ? { ...st, [field]: value } : st
-      );
-      onUpdate({ ...task, subtasks: updatedSubtasks });
-      
-      // API
-      await api.updateSubtask(subtaskId, { [field]: value });
-  };
-
   const addSubtask = async () => {
-    // 1. Create on server to get real ID
     const res = await api.createSubtask(task.id, "Nova sub-tarefa");
-    
     if (res.success && res.data) {
         const newSubtask: Subtask = { 
             id: res.data.id, 
@@ -130,7 +224,6 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
             duration: res.data.duration || 1
         };
         const updatedSubtasks = [...task.subtasks, newSubtask];
-        // Recalculate progress
         const total = updatedSubtasks.length;
         const completed = updatedSubtasks.filter(s => s.completed).length;
         const newProgress = total === 0 ? 0 : Math.round((completed / total) * 100);
@@ -141,31 +234,32 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
   };
 
   const deleteSubtask = async (subtaskId: string) => {
-      // Optimistic
       const updatedSubtasks = task.subtasks.filter(st => st.id !== subtaskId);
-      
-      // Recalculate progress
       const total = updatedSubtasks.length;
       const completed = updatedSubtasks.filter(s => s.completed).length;
       const newProgress = total === 0 ? 0 : Math.round((completed / total) * 100);
 
       onUpdate({ ...task, subtasks: updatedSubtasks, progress: newProgress });
-      // API
       await api.deleteSubtask(subtaskId);
       await api.updateTask({ ...task, progress: newProgress });
   };
 
-  // --- Real Attachment Logic ---
+  const handleSubtaskChange = async (subtaskId: string, field: keyof Subtask, value: any) => {
+      const updatedSubtasks = task.subtasks.map(st => 
+          st.id === subtaskId ? { ...st, [field]: value } : st
+      );
+      onUpdate({ ...task, subtasks: updatedSubtasks });
+      await api.updateSubtask(subtaskId, { [field]: value });
+  };
+
+  // --- Attachments ---
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-
       setIsUploading(true);
       const newAttachment = await api.uploadAttachment(task.id, file);
       if (newAttachment) {
           onUpdate({ ...task, attachments: [...task.attachments, newAttachment] });
-      } else {
-          alert('Falha ao subir arquivo. Verifique se o bucket "attachments" foi criado no Supabase.');
       }
       setIsUploading(false);
   };
@@ -192,14 +286,11 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
               {!deadlineAlert && <div></div>} {/* Spacer */}
 
               <div className="flex items-center gap-3">
-                  <span className="text-xs font-bold text-gray-500 uppercase">Progresso</span>
+                  <span className="text-xs font-bold text-gray-500 uppercase">Progresso (Auto)</span>
                   <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 px-3 py-1 rounded-lg border dark:border-gray-700">
-                      <input 
-                        type="range" min="0" max="100" 
-                        value={task.progress} 
-                        onChange={(e) => onUpdate({...task, progress: Number(e.target.value)})}
-                        className="w-24 h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                      />
+                       <div className="w-24 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                           <div className="h-full bg-indigo-600 transition-all duration-500" style={{width: `${task.progress}%`}}></div>
+                       </div>
                       <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400 w-8 text-right">{task.progress}%</span>
                   </div>
               </div>
@@ -215,13 +306,25 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
               />
               
               <div className="flex gap-2 flex-wrap shrink-0">
-                  <select
-                    value={task.status}
-                    onChange={(e) => onUpdate({ ...task, status: e.target.value })}
-                    className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 dark:bg-[#0f172a] text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
-                  >
-                    {columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                  </select>
+                  {/* Custom Status Select to handle logic */}
+                  <div className="relative">
+                      <select
+                        value={task.status}
+                        onChange={(e) => handleStatusChange(e.target.value)}
+                        className={`px-3 py-1.5 rounded-lg border text-sm font-bold outline-none appearance-none pr-8 cursor-pointer
+                            ${task.status === 'Concluído' ? 'bg-green-100 text-green-700 border-green-200' :
+                              task.status === 'Cancelado' ? 'bg-red-100 text-red-700 border-red-200' :
+                              task.status === 'Em Pausa' ? 'bg-orange-100 text-orange-700 border-orange-200' :
+                              task.status === 'Em Progresso' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                              'bg-gray-100 text-gray-700 border-gray-200'
+                            }`}
+                      >
+                        {columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                        <option value="Em Pausa">Em Pausa</option>
+                        <option value="Cancelado">Cancelado</option>
+                      </select>
+                      <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-current opacity-70 pointer-events-none" />
+                  </div>
                   
                   <select
                     value={task.priority}
@@ -237,7 +340,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
           </div>
       </div>
 
-      {/* 2. People Section (Responsável & Apoio) */}
+      {/* 2. People Section */}
       <div className="bg-gray-50 dark:bg-[#1b263b]/50 p-4 rounded-xl border border-gray-100 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
               <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase mb-3">
@@ -321,10 +424,10 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
           <div className="p-4 space-y-3">
               {/* Header Row */}
               <div className="grid grid-cols-12 gap-4 px-2 mb-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  <div className="col-span-1 text-center">Status</div>
+                  <div className="col-span-1 text-center">Feito?</div>
                   <div className="col-span-5">Atividade</div>
                   <div className="col-span-3">Início</div>
-                  <div className="col-span-3">Fim</div>
+                  <div className="col-span-3">Fim / Conclusão</div>
               </div>
 
               {task.subtasks.map(st => (
@@ -355,13 +458,19 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                           />
                       </div>
                       <div className="col-span-3 flex items-center gap-2">
-                          <input 
-                            type="date"
-                            value={st.dueDate ? st.dueDate.split('T')[0] : ''}
-                            onChange={(e) => handleSubtaskChange(st.id, 'dueDate', e.target.value)}
-                            className="w-full text-xs bg-transparent border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-gray-600 dark:text-gray-400 focus:ring-1 focus:ring-indigo-500"
-                          />
-                          <button onClick={() => deleteSubtask(st.id)} className="text-gray-400 hover:text-red-500 p-1 rounded opacity-0 group-hover:opacity-100 transition-all">
+                          {st.completed && st.completedAt ? (
+                              <span className="text-[10px] text-green-600 font-bold bg-green-50 px-2 py-1 rounded">
+                                  {new Date(st.completedAt).toLocaleDateString()}
+                              </span>
+                          ) : (
+                            <input 
+                                type="date"
+                                value={st.dueDate ? st.dueDate.split('T')[0] : ''}
+                                onChange={(e) => handleSubtaskChange(st.id, 'dueDate', e.target.value)}
+                                className="w-full text-xs bg-transparent border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-gray-600 dark:text-gray-400 focus:ring-1 focus:ring-indigo-500"
+                            />
+                          )}
+                          <button onClick={() => deleteSubtask(st.id)} className="text-gray-400 hover:text-red-500 p-1 rounded opacity-0 group-hover:opacity-100 transition-all ml-auto">
                               <Trash2 size={14} />
                           </button>
                       </div>
@@ -420,6 +529,61 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
             </div>
       </div>
 
+      {/* 6. Timeline Section */}
+      <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+           <label className="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200 mb-6">
+                <Clock size={16} /> Linha do Tempo
+           </label>
+           
+           <div className="relative pl-6 space-y-8">
+               {/* Vertical Line */}
+               <div className="absolute top-2 bottom-2 left-2.5 w-0.5 bg-gray-200 dark:bg-gray-700"></div>
+               
+               {/* Timeline Events */}
+               {(task.timeline || []).length === 0 && (
+                   <p className="text-xs text-gray-400 italic pl-2">Nenhum evento registrado ainda.</p>
+               )}
+               {task.timeline && [...task.timeline].reverse().map((event, idx) => {
+                   let Icon = Clock;
+                   let color = "bg-gray-100 text-gray-500";
+                   
+                   switch(event.eventType) {
+                       case 'created': Icon = Plus; color = "bg-blue-100 text-blue-600"; break;
+                       case 'started': Icon = PlayCircle; color = "bg-green-100 text-green-600"; break;
+                       case 'completed': Icon = CheckCircle2; color = "bg-green-600 text-white"; break;
+                       case 'paused': Icon = PauseCircle; color = "bg-orange-100 text-orange-600"; break;
+                       case 'cancelled': Icon = XCircle; color = "bg-red-100 text-red-600"; break;
+                       case 'resumed': Icon = PlayCircle; color = "bg-blue-100 text-blue-600"; break;
+                   }
+
+                   return (
+                       <div key={event.id} className="relative flex items-start gap-4 group">
+                            <div className={`absolute -left-[22px] w-8 h-8 rounded-full border-4 border-white dark:border-[#021221] flex items-center justify-center z-10 ${color}`}>
+                                <Icon size={14} />
+                            </div>
+                            <div className="flex-1 bg-gray-50 dark:bg-[#1b263b]/40 p-3 rounded-lg border border-gray-100 dark:border-gray-800">
+                                <div className="flex justify-between items-start mb-1">
+                                    <span className="text-xs font-bold text-gray-700 dark:text-gray-200 capitalize">
+                                        {event.eventType === 'subtask_update' ? 'Atualização' : event.eventType === 'status_change' ? 'Mudança de Status' : event.eventType === 'created' ? 'Criado' : event.eventType === 'started' ? 'Iniciado' : event.eventType === 'completed' ? 'Finalizado' : event.eventType === 'paused' ? 'Pausado' : event.eventType === 'cancelled' ? 'Cancelado' : 'Retomado'}
+                                    </span>
+                                    <span className="text-[10px] text-gray-400">
+                                        {new Date(event.createdAt).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'})}
+                                    </span>
+                                </div>
+                                <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                                    {event.reason || (event.oldStatus && event.newStatus ? `Alterado de ${event.oldStatus} para ${event.newStatus}` : 'Sem detalhes adicionais.')}
+                                </p>
+                                <div className="flex items-center gap-2">
+                                    <Avatar src={event.userAvatar} alt={event.userName || '?'} size="sm" className="w-5 h-5 text-[10px]" />
+                                    <span className="text-[10px] text-gray-500">{event.userName || 'Sistema'}</span>
+                                </div>
+                            </div>
+                       </div>
+                   )
+               })}
+           </div>
+      </div>
+
       {/* Delete Footer */}
       <div className="pt-8 border-t border-gray-100 dark:border-gray-800 flex justify-end">
         <button 
@@ -429,6 +593,33 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
           <Trash2 size={16} /> Excluir Tarefa Permanentemente
         </button>
       </div>
+
+      {/* Status Reason Modal */}
+      <Modal isOpen={showStatusReasonModal} onClose={() => { setShowStatusReasonModal(false); setPendingStatus(null); }} title={pendingStatus === 'Cancelado' ? 'Cancelar Tarefa' : 'Pausar Tarefa'} maxWidth="max-w-md">
+           <div className="space-y-4">
+               <p className="text-sm text-gray-600 dark:text-gray-300">
+                   Por favor, informe o motivo para {pendingStatus === 'Cancelado' ? 'cancelar' : 'pausar'} esta tarefa. Isso ficará registrado na linha do tempo.
+               </p>
+               <textarea 
+                  autoFocus
+                  className="w-full p-3 border rounded-lg dark:bg-[#0f172a] dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Ex: Aguardando aprovação do cliente..."
+                  rows={3}
+                  value={statusReason}
+                  onChange={(e) => setStatusReason(e.target.value)}
+               />
+               <div className="flex justify-end gap-2 pt-2">
+                   <button onClick={() => { setShowStatusReasonModal(false); setPendingStatus(null); }} className="px-4 py-2 text-gray-500 text-sm font-bold">Cancelar</button>
+                   <button 
+                    onClick={confirmStatusChange} 
+                    disabled={!statusReason.trim()}
+                    className={`px-4 py-2 text-white text-sm font-bold rounded-lg ${pendingStatus === 'Cancelado' ? 'bg-red-600 hover:bg-red-700' : 'bg-orange-500 hover:bg-orange-600'} disabled:opacity-50`}
+                   >
+                       Confirmar
+                   </button>
+               </div>
+           </div>
+      </Modal>
     </div>
   );
 };

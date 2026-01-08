@@ -48,6 +48,7 @@ export interface Subtask {
   dueDate?: string;
   startDate?: string;
   duration: number; // Dias de esforço
+  completedAt?: string; // Novo
 }
 
 export interface Attachment {
@@ -62,6 +63,20 @@ export interface Comment {
   id: string;
   userId: string;
   text: string;
+  createdAt: string;
+}
+
+// Nova Interface para Timeline
+export interface TaskTimelineEntry {
+  id: string;
+  taskId: string;
+  userId?: string;
+  userName?: string; // Preenchido no front/service
+  userAvatar?: string; // Preenchido no front/service
+  eventType: 'created' | 'started' | 'completed' | 'paused' | 'cancelled' | 'resumed' | 'subtask_update' | 'info';
+  oldStatus?: string;
+  newStatus?: string;
+  reason?: string;
   createdAt: string;
 }
 
@@ -82,9 +97,12 @@ export interface Task {
   attachments: Attachment[];
   comments: Comment[];
   createdAt: string;
+  startedAt?: string;   // Novo
+  completedAt?: string; // Novo
   teamId: string;
   approvalStatus: ApprovalStatus;
   approverId?: string;
+  timeline?: TaskTimelineEntry[]; // Novo
 }
 
 export interface Column {

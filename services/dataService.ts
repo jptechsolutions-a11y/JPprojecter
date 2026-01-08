@@ -1,6 +1,6 @@
 
 import { supabase } from './supabaseClient';
-import { Task, User, Team, TaskGroup, Column, RoutineTask, Notification, Subtask, Attachment, Comment, Meeting, TeamRole } from '../types';
+import { Task, User, Team, TaskGroup, Column, RoutineTask, Notification, Subtask, Attachment, Comment, Meeting, TeamRole, TaskTimelineEntry } from '../types';
 
 // --- Mappers ---
 
@@ -31,6 +31,8 @@ const mapTask = (t: any): Task => ({
   tags: t.tags || [],
   progress: t.progress || 0,
   createdAt: t.created_at,
+  startedAt: t.started_at,
+  completedAt: t.completed_at,
   teamId: t.team_id,
   approvalStatus: t.approval_status || 'none',
   approverId: t.approver_id,
@@ -38,10 +40,11 @@ const mapTask = (t: any): Task => ({
     id: s.id,
     title: s.title,
     completed: s.completed,
-    assigneeId: s.assignee_id, // Fixed: camelCase
-    dueDate: s.due_date,       // Fixed: camelCase map from DB snake_case
-    startDate: s.start_date,   // Fixed: camelCase map from DB snake_case
-    duration: s.duration || 1 
+    assigneeId: s.assignee_id, 
+    dueDate: s.due_date,       
+    startDate: s.start_date,   
+    duration: s.duration || 1,
+    completedAt: s.completed_at
   })).sort((a: any, b: any) => a.id.localeCompare(b.id)),
   attachments: (t.attachments || []).map((a: any) => ({
     id: a.id,
@@ -55,7 +58,8 @@ const mapTask = (t: any): Task => ({
     userId: c.user_id,
     text: c.text,
     createdAt: c.created_at
-  }))
+  })),
+  timeline: [] // Will be populated separately if needed or on demand
 });
 
 // --- Constants ---
@@ -82,7 +86,6 @@ export const api = {
           return { users: [], teams: [], groups: [], columns: [], tasks: [], routines: [], notifications: [], meetings: [], roles: [] };
       }
 
-      // Prepara os times
       const userTeams = memberships
         .map((m: any) => m.teams)
         .filter(t => t !== null)
@@ -100,7 +103,6 @@ export const api = {
           teamId = userTeams[0].id;
       }
 
-      // BUSCA PARALELA
       const [
           teamUsersRes,
           groupsRes,
@@ -134,12 +136,9 @@ export const api = {
           return t;
       });
 
-      // --- SELF HEALING COLUMNS ---
-      // Se não vier colunas do banco, inserimos as padrões para evitar erro de Foreign Key
       let mappedColumns = columnsRes.data ? columnsRes.data.map((c:any) => ({ id: c.id, title: c.title, color: c.color })) : [];
 
       if (mappedColumns.length === 0) {
-          // Tenta inserir no banco para corrigir o erro 23503 permanentemente
           await supabase.from('columns').insert(DEFAULT_COLUMNS);
           mappedColumns = DEFAULT_COLUMNS;
       }
@@ -180,11 +179,50 @@ export const api = {
   },
 
   getTaskDetails: async (taskId: string) => {
-      const { data } = await supabase.from('tasks')
-          .select('*, subtasks(*), attachments(*), comments(*)')
-          .eq('id', taskId)
-          .single();
-      return data ? mapTask(data) : null;
+      // Fetch task details AND timeline
+      const [taskRes, timelineRes] = await Promise.all([
+          supabase.from('tasks').select('*, subtasks(*), attachments(*), comments(*)').eq('id', taskId).single(),
+          supabase.from('task_timeline').select('*, profiles(name, avatar_url)').eq('task_id', taskId).order('created_at', { ascending: true })
+      ]);
+
+      if (!taskRes.data) return null;
+      
+      const mappedTask = mapTask(taskRes.data);
+      
+      // Map Timeline
+      if (timelineRes.data) {
+          mappedTask.timeline = timelineRes.data.map((t: any) => ({
+              id: t.id,
+              taskId: t.task_id,
+              userId: t.user_id,
+              userName: t.profiles?.name || 'Sistema',
+              userAvatar: t.profiles?.avatar_url,
+              eventType: t.event_type,
+              oldStatus: t.old_status,
+              newStatus: t.new_status,
+              reason: t.reason,
+              createdAt: t.created_at
+          }));
+      }
+
+      return mappedTask;
+  },
+  
+  // --- Timeline Functions ---
+  
+  logTimelineEvent: async (taskId: string, eventType: string, newStatus?: string, oldStatus?: string, reason?: string) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id;
+      
+      const { error } = await supabase.from('task_timeline').insert({
+          task_id: taskId,
+          user_id: userId,
+          event_type: eventType,
+          new_status: newStatus,
+          old_status: oldStatus,
+          reason: reason
+      });
+      return !error;
   },
 
   updateUser: async (userId: string, updates: Partial<User>) => {
@@ -293,11 +331,12 @@ export const api = {
     }).select().single();
     
     if (taskError || !taskData) {
-        console.error("SUPABASE ERROR CREATING TASK:", taskError);
         return { success: false, error: taskError };
     }
 
-    // 2. Inserir subtarefas se houver
+    // Log creation in timeline
+    await api.logTimelineEvent(taskData.id, 'created', task.status);
+
     if (initialSubtasks.length > 0) {
         const subtasksToInsert = initialSubtasks.map(s => ({
             task_id: taskData.id,
@@ -309,18 +348,19 @@ export const api = {
         await supabase.from('subtasks').insert(subtasksToInsert);
     }
 
-    // 3. Retornar tarefa completa (pode precisar de um fetch ou construir manualmente)
-    // Para simplificar, vamos retornar o mapeamento da tarefa e assumir que o refresh da tela pegará as subs
     return { success: true, data: mapTask(taskData) };
   },
 
   updateTask: async (task: Task) => {
-    const { error } = await supabase.from('tasks').update({
+    const dbUpdates: any = {
       group_id: task.groupId, title: task.title, description: task.description,
       status: task.status, priority: task.priority, assignee_id: task.assigneeId,
       progress: task.progress, approval_status: task.approvalStatus, approver_id: task.approverId,
-      start_date: task.startDate, due_date: task.dueDate // Ensure dates are updated
-    }).eq('id', task.id);
+      start_date: task.startDate, due_date: task.dueDate,
+      started_at: task.startedAt, completed_at: task.completedAt
+    };
+
+    const { error } = await supabase.from('tasks').update(dbUpdates).eq('id', task.id);
     return !error;
   },
 
@@ -332,15 +372,21 @@ export const api = {
   // --- Subtask Management ---
   createSubtask: async (taskId: string, title: string, duration: number = 1) => {
       const { data, error } = await supabase.from('subtasks').insert({ task_id: taskId, title, completed: false, duration }).select().single();
+      if (!error) {
+          // Log timeline event
+          await api.logTimelineEvent(taskId, 'subtask_update', undefined, undefined, `Atividade criada: ${title}`);
+      }
       return { success: !error, data: data ? { id: data.id, title: data.title, completed: data.completed, assignee_id: data.assignee_id, duration: data.duration, startDate: data.start_date, dueDate: data.due_date } : null };
   },
 
   updateSubtask: async (subtaskId: string, updates: Partial<Subtask>) => {
       const dbUpdates: any = {};
       if (updates.title !== undefined) dbUpdates.title = updates.title;
-      if (updates.completed !== undefined) dbUpdates.completed = updates.completed;
+      if (updates.completed !== undefined) {
+          dbUpdates.completed = updates.completed;
+          dbUpdates.completed_at = updates.completed ? new Date().toISOString() : null;
+      }
       if (updates.duration !== undefined) dbUpdates.duration = updates.duration;
-      // Map camelCase to snake_case for DB
       if (updates.startDate !== undefined) dbUpdates.start_date = updates.startDate;
       if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate;
       
