@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2, Calendar as CalendarIcon, Clock, Trash2 } from 'lucide-react';
+import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2, Calendar as CalendarIcon, Clock, Trash2, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Avatar } from './components/Avatar';
 import { Modal } from './components/Modal';
 import { TaskDetail } from './components/TaskDetail';
@@ -40,12 +40,30 @@ const TaskCard: React.FC<{ task: Task; user?: User; onClick: () => void; onDragS
 
   const completedSubtasks = task.subtasks.filter(s => s.completed).length;
 
+  const getDeadlineStatus = () => {
+      if (!task.dueDate || task.status === 'Concluído') return null;
+      const due = new Date(task.dueDate);
+      due.setHours(0,0,0,0);
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      
+      const diffTime = due.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays < 0) return { label: 'Atrasado', color: 'bg-red-100 text-red-600', icon: AlertTriangle };
+      if (diffDays === 0) return { label: 'Hoje', color: 'bg-orange-100 text-orange-600', icon: Clock };
+      if (diffDays <= 2) return { label: 'Próximo', color: 'bg-yellow-100 text-yellow-600', icon: AlertCircle };
+      return null;
+  };
+  
+  const deadline = getDeadlineStatus();
+
   return (
     <div 
       draggable
       onDragStart={(e) => onDragStart(e, task)}
       onClick={onClick}
-      className="bg-white dark:bg-[#1e293b] p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group"
+      className="bg-white dark:bg-[#1e293b] p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group relative overflow-hidden"
     >
       <div className="flex justify-between items-start mb-3">
         <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${priorityColors[task.priority]}`}>
@@ -53,9 +71,16 @@ const TaskCard: React.FC<{ task: Task; user?: User; onClick: () => void; onDragS
         </span>
         {user && <Avatar src={user.avatar} alt={user.name} size="sm" />}
       </div>
+      
       <h3 className="text-gray-800 dark:text-gray-100 font-semibold mb-3 leading-tight group-hover:text-[#00b4d8] transition-colors text-sm">
         {task.title}
       </h3>
+      
+      {deadline && (
+          <div className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded mb-2 w-fit ${deadline.color}`}>
+              <deadline.icon size={10} /> {deadline.label}
+          </div>
+      )}
       
       <div className="w-full bg-gray-100 dark:bg-gray-700 h-1.5 rounded-full mt-2 mb-2 overflow-hidden">
         <div 

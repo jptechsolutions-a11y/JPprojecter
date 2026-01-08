@@ -1,7 +1,7 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Task, User, Priority, Status, Subtask, Attachment, Comment, Column, ApprovalStatus } from '../types';
-import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2 } from 'lucide-react';
+import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2, AlertTriangle } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { generateSubtasks, generateTaskDescription } from '../services/geminiService';
 import { api } from '../services/dataService';
@@ -25,6 +25,26 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const priorities: Priority[] = ['Baixa', 'Média', 'Alta'];
+
+  // Helper para verificar prazo
+  const getDeadlineAlert = () => {
+    if (!task.dueDate || task.status === 'Concluído') return null;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const due = new Date(task.dueDate);
+    due.setHours(0,0,0,0); // Normaliza para comparar apenas datas
+    
+    // Diferença em milissegundos
+    const diffTime = due.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return { label: `Atrasado ${Math.abs(diffDays)} dias`, color: 'bg-red-100 text-red-700 border-red-200' };
+    if (diffDays === 0) return { label: 'Entrega Hoje', color: 'bg-orange-100 text-orange-700 border-orange-200' };
+    if (diffDays <= 2) return { label: 'Prazo Próximo', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' };
+    return null;
+  };
+
+  const deadlineAlert = getDeadlineAlert();
 
   const handleAiDescription = async () => {
     setIsGeneratingDesc(true);
@@ -52,7 +72,13 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
     }
     
     if (createdSubtasks.length > 0) {
-        onUpdate({ ...task, subtasks: [...task.subtasks, ...createdSubtasks] });
+        const updatedSubtasks = [...task.subtasks, ...createdSubtasks];
+        // Recalculate progress logic here if needed, usually new tasks are 0% so progress drops
+        const total = updatedSubtasks.length;
+        const completed = updatedSubtasks.filter(s => s.completed).length;
+        const newProgress = total === 0 ? 0 : Math.round((completed / total) * 100);
+
+        onUpdate({ ...task, subtasks: updatedSubtasks, progress: newProgress });
     }
     setIsGeneratingSubs(false);
   };
@@ -61,14 +87,23 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
     const subtask = task.subtasks.find(st => st.id === subtaskId);
     if (subtask) {
         const newCompleted = !subtask.completed;
-        // Optimistic update
+        
+        // Optimistic update of subtasks list
         const updatedSubtasks = task.subtasks.map(st => 
           st.id === subtaskId ? { ...st, completed: newCompleted } : st
         );
-        onUpdate({ ...task, subtasks: updatedSubtasks });
+
+        // Auto-Calculate Progress
+        const total = updatedSubtasks.length;
+        const completedCount = updatedSubtasks.filter(s => s.completed).length;
+        const newProgress = total === 0 ? 0 : Math.round((completedCount / total) * 100);
+
+        // Update task with new subtasks AND new progress
+        onUpdate({ ...task, subtasks: updatedSubtasks, progress: newProgress });
         
-        // API call
+        // API calls (fire and forget / separate async)
         await api.updateSubtask(subtaskId, { completed: newCompleted });
+        await api.updateTask({ ...task, progress: newProgress }); // Persist progress to DB
     }
   };
 
@@ -94,26 +129,30 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
             completed: false,
             duration: res.data.duration || 1
         };
-        onUpdate({ ...task, subtasks: [...task.subtasks, newSubtask] });
-    } else {
-        // Fallback optimistic
-        const tempId = crypto.randomUUID();
-        const newSubtask: Subtask = { 
-            id: tempId, 
-            title: "Nova sub-tarefa", 
-            completed: false, 
-            duration: 1 
-        };
-        onUpdate({ ...task, subtasks: [...task.subtasks, newSubtask] });
+        const updatedSubtasks = [...task.subtasks, newSubtask];
+        // Recalculate progress
+        const total = updatedSubtasks.length;
+        const completed = updatedSubtasks.filter(s => s.completed).length;
+        const newProgress = total === 0 ? 0 : Math.round((completed / total) * 100);
+
+        onUpdate({ ...task, subtasks: updatedSubtasks, progress: newProgress });
+        await api.updateTask({ ...task, progress: newProgress });
     }
   };
 
   const deleteSubtask = async (subtaskId: string) => {
       // Optimistic
       const updatedSubtasks = task.subtasks.filter(st => st.id !== subtaskId);
-      onUpdate({ ...task, subtasks: updatedSubtasks });
+      
+      // Recalculate progress
+      const total = updatedSubtasks.length;
+      const completed = updatedSubtasks.filter(s => s.completed).length;
+      const newProgress = total === 0 ? 0 : Math.round((completed / total) * 100);
+
+      onUpdate({ ...task, subtasks: updatedSubtasks, progress: newProgress });
       // API
       await api.deleteSubtask(subtaskId);
+      await api.updateTask({ ...task, progress: newProgress });
   };
 
   // --- Real Attachment Logic ---
@@ -152,6 +191,14 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
 
   return (
     <div className="space-y-6">
+      {/* Header Alert if deadline is close */}
+      {deadlineAlert && (
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-bold ${deadlineAlert.color}`}>
+              <AlertTriangle size={16} />
+              {deadlineAlert.label}
+          </div>
+      )}
+
       <div className="flex justify-between items-start gap-4">
         <div className="flex gap-4 flex-wrap flex-1">
           <select

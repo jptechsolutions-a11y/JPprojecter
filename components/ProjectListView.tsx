@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Task, TaskGroup, User, Status, Priority, Subtask } from '../types';
-import { ChevronDown, ChevronRight, Plus, Calendar, User as UserIcon, AlertCircle, CheckCircle2, Clock, CornerDownRight, ShieldCheck, ShieldAlert, Shield, Trash2, FolderX, Info } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Calendar, User as UserIcon, AlertCircle, CheckCircle2, Clock, CornerDownRight, ShieldCheck, ShieldAlert, Shield, Trash2, FolderX, Info, AlertTriangle } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { api } from '../services/dataService';
 
@@ -43,6 +43,22 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
       case 'Revisão': return 'bg-[#a25ddc]'; // Purple
       default: return 'bg-[#c4c4c4]'; // Gray
     }
+  };
+
+  const getDeadlineStatus = (dueDate?: string, status?: string) => {
+      if (!dueDate || status === 'Concluído') return null;
+      const due = new Date(dueDate);
+      due.setHours(0,0,0,0);
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      
+      const diffTime = due.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays < 0) return { label: 'Atrasado', color: 'text-red-600 bg-red-100', icon: AlertTriangle };
+      if (diffDays === 0) return { label: 'Entrega Hoje', color: 'text-orange-600 bg-orange-100', icon: Clock };
+      if (diffDays <= 2) return { label: 'Prazo Próximo', color: 'text-yellow-600 bg-yellow-100', icon: AlertCircle };
+      return null;
   };
 
   const calculateEffectiveDateRange = (task: Task) => {
@@ -91,16 +107,30 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
         const groupTasks = tasks.filter(t => t.groupId === group.id);
         const isCollapsed = collapsedGroups.has(group.id);
         
+        // Calculate Project Progress
+        const totalProgress = groupTasks.length > 0 
+            ? Math.round(groupTasks.reduce((acc, t) => acc + (t.progress || 0), 0) / groupTasks.length) 
+            : 0;
+        
         return (
           <div key={group.id} className="flex flex-col animate-fade-in">
             {/* Group Header */}
             <div className="group sticky top-0 z-10 bg-gray-50 dark:bg-[#021221] pt-2 pb-2 flex items-center justify-between transition-colors mb-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-1">
                 <button onClick={() => toggleGroup(group.id)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors" style={{ color: group.color }}>
                   {isCollapsed ? <ChevronRight size={20} /> : <ChevronDown size={20} />}
                 </button>
                 <h3 className="text-xl font-bold" style={{ color: group.color }}>{group.title}</h3>
-                <span className="text-gray-400 text-sm font-normal ml-2">{groupTasks.length} tarefas</span>
+                
+                {/* Project Progress Bar in Header */}
+                <div className="flex items-center gap-2 ml-4">
+                    <div className="w-24 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-green-500 transition-all duration-700" style={{ width: `${totalProgress}%` }}></div>
+                    </div>
+                    <span className="text-xs font-bold text-gray-500 dark:text-gray-400">{totalProgress}%</span>
+                </div>
+
+                <span className="text-gray-400 text-sm font-normal ml-2 hidden sm:inline">{groupTasks.length} tarefas</span>
               </div>
               <button 
                   onClick={() => onDeleteProject(group.id)} 
@@ -127,19 +157,33 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                    const totalDuration = calculateTotalDuration(task.subtasks);
                    const { start: effectiveStart, end: effectiveEnd } = calculateEffectiveDateRange(task);
                    const timelineWidth = Math.min(100, totalDuration * 5); // Visual hack for timeline pill width
+                   const deadlineInfo = getDeadlineStatus(task.dueDate, task.status);
 
                    return (
-                    <div key={task.id} className="grid grid-cols-12 h-12 items-center hover:bg-gray-50 dark:hover:bg-[#1e293b] transition-colors border-b border-gray-100 dark:border-gray-800 cursor-pointer text-sm" onClick={() => onTaskClick(task)}>
+                    <div key={task.id} className="grid grid-cols-12 h-14 items-center hover:bg-gray-50 dark:hover:bg-[#1e293b] transition-colors border-b border-gray-100 dark:border-gray-800 cursor-pointer text-sm" onClick={() => onTaskClick(task)}>
                         {/* Title Column */}
                         <div className="col-span-5 px-4 h-full flex items-center relative border-r border-gray-100 dark:border-gray-800 overflow-hidden">
                             <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: group.color }}></div>
-                            <div className="pl-4 flex flex-col justify-center min-w-0">
-                                <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{task.title}</span>
-                                {task.subtasks.length > 0 && (
-                                    <span className="text-[10px] text-gray-400 truncate">
-                                        {task.subtasks.length} atividades
-                                    </span>
-                                )}
+                            <div className="pl-4 flex flex-col justify-center min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{task.title}</span>
+                                    {deadlineInfo && (
+                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold flex items-center gap-1 ${deadlineInfo.color}`}>
+                                            <deadlineInfo.icon size={10} /> {deadlineInfo.label}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <div className="w-16 h-1 bg-gray-200 dark:bg-gray-700 rounded-full">
+                                        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${task.progress}%` }}></div>
+                                    </div>
+                                    <span className="text-[10px] text-gray-400">{task.progress}%</span>
+                                    {task.subtasks.length > 0 && (
+                                        <span className="text-[10px] text-gray-400 truncate ml-2">
+                                            • {task.subtasks.length} atividades
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
