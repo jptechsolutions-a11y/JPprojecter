@@ -65,7 +65,7 @@ const mapTask = (t: any): Task => ({
 });
 
 // --- Constants ---
-// Usamos IDs fixos se o banco falhar, mas idealmente o banco fornece UUIDs.
+// IDs textuais simples para garantir consistência
 const DEFAULT_COLUMNS = [
   { id: 'backlog', title: 'Tarefas (Entrada)', color: 'bg-gray-100 dark:bg-gray-800' },
   { id: 'prioridade', title: 'Prioridade', color: 'bg-blue-100 dark:bg-blue-900/30' },
@@ -143,13 +143,18 @@ export const api = {
       // --- Robust Column Handling ---
       let mappedColumns: Column[] = [];
       
-      // 1. Tentar usar dados do banco se existirem
       if (columnsRes.data && columnsRes.data.length > 0) {
           mappedColumns = columnsRes.data.map((c:any) => ({ id: c.id, title: c.title, color: c.color }));
-      } 
-      // 2. Fallback para memória se o banco estiver vazio ou der erro
-      else {
-           mappedColumns = DEFAULT_COLUMNS.map(c => ({ id: c.id, title: c.title, color: c.color }));
+      } else {
+           // Se não tem colunas no banco, cria as padrão para evitar erro de FK
+           const { data: createdCols, error: createErr } = await supabase.from('columns').upsert(DEFAULT_COLUMNS, { onConflict: 'id' }).select();
+           
+           if (!createErr && createdCols) {
+               mappedColumns = createdCols.map((c:any) => ({ id: c.id, title: c.title, color: c.color }));
+           } else {
+               // Fallback final memória (pode causar erro de FK na criação de task, mas permite visualização)
+               mappedColumns = DEFAULT_COLUMNS;
+           }
       }
       
       const mappedRoles: TeamRole[] = rolesRes.data ? rolesRes.data.map((r: any) => ({
@@ -394,23 +399,31 @@ export const api = {
   },
 
   createTask: async (task: Task, initialSubtasks: Partial<Subtask>[] = []) => {
-    // 1. Criar a tarefa principal
-    // GARANTIA: Se o status for um título (ex: "A Fazer"), mas temos colunas no banco com IDs UUID, isso falharia.
-    // O Front já tenta enviar o ID, mas aqui fazemos uma última verificação se possível, ou confiamos no front.
-    
-    // NOTA: kanban_column_id é opcional se o banco não tiver, mas tentamos passar.
-    const { data: taskData, error: taskError } = await supabase.from('tasks').insert({
+    // Preparar payload
+    const payload: any = {
       team_id: task.teamId, 
       group_id: task.groupId, 
       title: task.title,
       description: task.description, 
       status: task.status, 
       priority: task.priority,
-      kanban_column_id: task.kanbanColumnId, // Salva a posição visual
+      kanban_column_id: task.kanbanColumnId, 
       assignee_id: task.assigneeId, 
       start_date: task.startDate, 
       due_date: task.dueDate
-    }).select().single();
+    };
+
+    // Tenta inserir
+    let { data: taskData, error: taskError } = await supabase.from('tasks').insert(payload).select().single();
+    
+    // RETRY: Se falhar por FK da coluna (erro 23503), tenta sem a coluna
+    if (taskError && taskError.code === '23503' && (taskError.details?.includes('columns') || taskError.message?.includes('kanban_column_id'))) {
+        console.warn("Coluna Kanban não encontrada. Criando tarefa sem associação de coluna visual.");
+        delete payload.kanban_column_id;
+        const retry = await supabase.from('tasks').insert(payload).select().single();
+        taskData = retry.data;
+        taskError = retry.error;
+    }
     
     if (taskError || !taskData) {
         return { success: false, error: taskError };
