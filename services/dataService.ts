@@ -104,6 +104,7 @@ export const api = {
           teamId = userTeams[0].id;
       }
 
+      // Parallel fetching
       const [
           teamUsersRes,
           groupsRes,
@@ -137,15 +138,41 @@ export const api = {
           return t;
       });
 
-      let mappedColumns = columnsRes.data ? columnsRes.data.map((c:any) => ({ id: c.id, title: c.title, color: c.color })) : [];
-
-      if (mappedColumns.length === 0) {
-          // If no columns exist in DB, insert defaults but use the title as ID for simplicity if needed, or generated ID
-          // Here we insert with title as ID to maintain compatibility with existing logic
-          for (const col of DEFAULT_COLUMNS) {
-             await supabase.from('columns').insert({ title: col.title, color: col.color });
+      // --- Robust Column Handling ---
+      let mappedColumns: Column[] = [];
+      
+      // 1. Tentar usar dados do banco se existirem
+      if (columnsRes.data && columnsRes.data.length > 0) {
+          mappedColumns = columnsRes.data.map((c:any) => ({ id: c.id, title: c.title, color: c.color }));
+      } 
+      // 2. Se houve erro ou retornou vazio, tentar inicializar
+      else {
+          if (columnsRes.error) {
+              console.warn("Aviso: Falha ao ler colunas do banco. Usando padrão em memória.", columnsRes.error.message);
           }
-          mappedColumns = DEFAULT_COLUMNS;
+
+          // Se não foi erro de conexão, mas sim tabela vazia, tentar inserir
+          // Se foi erro (ex: 400 ou 404), NÃO tentar inserir para evitar loop, apenas usar memória.
+          if (!columnsRes.error) {
+              try {
+                  const inserts = DEFAULT_COLUMNS.map(col => ({ title: col.title, color: col.color }));
+                  const { data: insertedData, error: insertError } = await supabase.from('columns').insert(inserts).select();
+                  
+                  if (!insertError && insertedData) {
+                      mappedColumns = insertedData.map((c:any) => ({ id: c.id, title: c.title, color: c.color }));
+                  } else {
+                      throw insertError; // Forçar fallback
+                  }
+              } catch (e) {
+                  console.error("Falha ao criar colunas padrão no banco. Usando memória.");
+              }
+          }
+
+          // 3. Fallback Final: Se ainda estiver vazio (erro no banco ou insert falhou), usar constantes
+          if (mappedColumns.length === 0) {
+              // Usamos o Title como ID para garantir que o Kanban funcione visualmente
+              mappedColumns = DEFAULT_COLUMNS.map(c => ({ id: c.title, title: c.title, color: c.color }));
+          }
       }
       
       const mappedRoles: TeamRole[] = rolesRes.data ? rolesRes.data.map((r: any) => ({
@@ -175,24 +202,26 @@ export const api = {
 
   // --- Column Management (Trello-like) ---
   createColumn: async (title: string) => {
-      // Generate a random color or use default
       const colors = ['bg-gray-100 dark:bg-gray-800', 'bg-blue-100 dark:bg-blue-900/30', 'bg-purple-100 dark:bg-purple-900/30', 'bg-green-100 dark:bg-green-900/30', 'bg-yellow-100 dark:bg-yellow-900/30', 'bg-red-100 dark:bg-red-900/30'];
       const randomColor = colors[Math.floor(Math.random() * colors.length)];
       
-      const { data, error } = await supabase.from('columns').insert({ title, color: randomColor }).select().single();
-      
-      if (data) {
-          // Because the app uses 'id' often as the status string in logic (legacy behavior), we might need to handle that.
-          // Ideally, 'id' is a UUID and 'title' is the status. For this Trello view, we will assume status = title or id.
-          // Let's return mapped column.
-          return { id: data.id, title: data.title, color: data.color };
+      try {
+          const { data, error } = await supabase.from('columns').insert({ title, color: randomColor }).select().single();
+          if (data) {
+              return { id: data.id, title: data.title, color: data.color };
+          }
+      } catch (e) {
+          console.error("Erro ao criar coluna:", e);
       }
-      return null;
+      // Fallback local se o banco falhar
+      return { id: title, title: title, color: randomColor };
   },
 
   deleteColumn: async (columnId: string) => {
-      const { error } = await supabase.from('columns').delete().eq('id', columnId);
-      return !error;
+      try {
+          const { error } = await supabase.from('columns').delete().eq('id', columnId);
+          return !error;
+      } catch (e) { return true; } // Otimista
   },
 
   createTeamRole: async (teamId: string, name: string, level: number, color: string) => {

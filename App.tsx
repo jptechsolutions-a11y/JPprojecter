@@ -356,7 +356,7 @@ export default function App() {
 
     const formData = new FormData(e.currentTarget);
     const title = formData.get('title') as string;
-    const status = formData.get('status') as Status;
+    const status = formData.get('status') as Status; // This gets the ID now
     const groupId = formData.get('groupId') as string;
     
     const actualGroupId = groupId || (currentGroups.length > 0 ? currentGroups[0].id : '');
@@ -368,13 +368,16 @@ export default function App() {
     }
 
     const calculatedDueDate = calculateEndDate();
+    
+    // Ensure we use a valid ID. If empty, use the first available column ID.
+    const initialStatus = status || (columns.length > 0 ? columns[0].id : '');
 
     const tempId = crypto.randomUUID();
     const newTask: Task = {
       id: tempId, // Temporary ID
       groupId: actualGroupId, 
       title, 
-      status, 
+      status: initialStatus, 
       description: '', 
       priority: 'Média',
       startDate: newTaskStartDate,
@@ -563,11 +566,9 @@ export default function App() {
                                 e.preventDefault();
                                 const taskId = e.dataTransfer.getData('taskId');
                                 const task = tasks.find(t => t.id === taskId);
-                                // Fallback to handle both ID or Title matching for status
-                                if(task && task.status !== column.title && task.status !== column.id) {
-                                    // Prefer title for visual status, or id if standard
-                                    const newStatus = column.title || column.id;
-                                    handleUpdateTask({ ...task, status: newStatus });
+                                // FIX: Use column.id strictly to satisfy Foreign Key. The DB expects ID, not title.
+                                if(task && task.status !== column.id) {
+                                    handleUpdateTask({ ...task, status: column.id });
                                 }
                             }}
                          >
@@ -676,7 +677,8 @@ export default function App() {
              <div className="flex-1">
                 <label className="block text-sm font-bold mb-1 dark:text-gray-300">Status Inicial</label>
                 <select name="status" className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-[#1e293b] border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white outline-none">
-                    {columns.map(c => <option key={c.id} value={c.title || c.id}>{c.title}</option>)}
+                    {/* FIX: Use c.id as value, not title, to satisfy Foreign Key */}
+                    {columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                 </select>
              </div>
           </div>
