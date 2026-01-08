@@ -50,10 +50,12 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
 
   const getStatusColor = (status: Status) => {
     switch (status) {
-      case 'Concluído': return 'bg-[#00c875]'; // Green
-      case 'Em Progresso': return 'bg-[#fdab3d]'; // Orange
-      case 'Revisão': return 'bg-[#a25ddc]'; // Purple
-      default: return 'bg-[#c4c4c4]'; // Gray
+      case 'Concluído': return 'bg-[#00c875]'; 
+      case 'Em Progresso': return 'bg-[#fdab3d]';
+      case 'Revisão': return 'bg-[#a25ddc]'; 
+      case 'Em Pausa': return 'bg-orange-400'; 
+      case 'Cancelado': return 'bg-red-500'; 
+      default: return 'bg-[#c4c4c4]';
     }
   };
 

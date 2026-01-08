@@ -314,8 +314,6 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
       );
       
       // Determine if we need to log this specific change immediately to timeline
-      // Note: We don't want to log every keystroke for title, only onBlur ideally, but here we do it simply.
-      // Ideally move title update to onBlur. For dates and assignee, logging immediately is fine.
       let logMsg = '';
       if (field === 'assigneeId') {
            const u = users.find(u => u.id === value);
@@ -436,8 +434,8 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                             }`}
                       >
                         {columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                        <option value="Em Pausa">Em Pausa</option>
-                        <option value="Cancelado">Cancelado</option>
+                        {!columns.find(c => c.id === 'Em Pausa') && <option value="Em Pausa">Em Pausa</option>}
+                        {!columns.find(c => c.id === 'Cancelado') && <option value="Cancelado">Cancelado</option>}
                       </select>
                       <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-current opacity-70 pointer-events-none" />
                   </div>
