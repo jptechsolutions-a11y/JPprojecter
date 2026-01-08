@@ -181,7 +181,6 @@ export const api = {
 
   getTaskDetails: async (taskId: string) => {
       // Fetch task details AND timeline
-      // Usamos uma query mais permissiva no join com profiles para evitar erros se a FK não estiver estrita
       const { data: taskData, error: taskError } = await supabase
           .from('tasks')
           .select('*, subtasks(*), attachments(*), comments(*)')
@@ -192,7 +191,6 @@ export const api = {
       
       const mappedTask = mapTask(taskData);
       
-      // Separate query for timeline to safely join profiles
       const { data: timelineData, error: timelineError } = await supabase
           .from('task_timeline')
           .select('*, profiles(name, avatar_url)')
@@ -221,8 +219,10 @@ export const api = {
   
   logTimelineEvent: async (taskId: string, eventType: string, newStatus?: string, oldStatus?: string, reason?: string) => {
       const { data: { session } } = await supabase.auth.getSession();
-      const userId = session?.user?.id;
+      const userId = session?.user?.id || null;
       
+      console.log(`[Timeline] Saving event: ${eventType} for task ${taskId}`);
+
       // TENTATIVA 1: Inserir com o ID do usuário logado
       let { error } = await supabase.from('task_timeline').insert({
           task_id: taskId,
@@ -233,9 +233,9 @@ export const api = {
           reason: reason
       });
       
-      // TENTATIVA 2: Se falhar por qualquer motivo (FK, RLS, etc), tenta salvar sem vincular o usuário (Anônimo/Sistema)
+      // TENTATIVA 2: Fallback se falhar (ex: usuário deletado ou erro de FK)
       if (error) {
-          console.warn(`Timeline Log: Falha na tentativa 1 (${error.message}). Tentando fallback anônimo.`);
+          console.warn(`[Timeline] Attempt 1 failed: ${error.message}. Retrying as Anonymous.`);
           const retryRes = await supabase.from('task_timeline').insert({
               task_id: taskId,
               user_id: null,
@@ -246,10 +246,10 @@ export const api = {
           });
           
           if (retryRes.error) {
-              console.error("FATAL: Falha ao salvar na timeline mesmo com fallback.", retryRes.error);
+              console.error("[Timeline] FATAL: Could not save timeline event.", retryRes.error);
           }
       }
-      return true; // Always return true to not block UI
+      return true;
   },
 
   updateUser: async (userId: string, updates: Partial<User>) => {
@@ -330,26 +330,18 @@ export const api = {
   uploadAttachment: async (taskId: string, file: File) => {
       try {
           const fileExt = file.name.split('.').pop();
-          // Use timestamp for uniqueness and clean name
           const fileName = `${taskId}/${Date.now()}_${Math.floor(Math.random() * 1000)}.${fileExt}`;
           
-          // Upload to 'attachments' bucket
           const { error: uploadError } = await supabase.storage
               .from('attachments')
-              .upload(fileName, file, {
-                  cacheControl: '3600',
-                  upsert: false
-              });
+              .upload(fileName, file, { cacheControl: '3600', upsert: false });
 
           if (uploadError) {
-              console.error("Erro no upload Supabase (Storage):", uploadError);
-              alert(`Erro no upload: ${uploadError.message}. Verifique se o bucket 'attachments' foi criado.`);
+              alert(`Erro no upload: ${uploadError.message}.`);
               return null;
           }
 
-          const { data: { publicUrl } } = supabase.storage
-              .from('attachments')
-              .getPublicUrl(fileName);
+          const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(fileName);
 
           const { data: attData, error: dbError } = await supabase
               .from('attachments')
@@ -359,19 +351,11 @@ export const api = {
                   url: publicUrl, 
                   type: file.type.includes('image') ? 'image' : 'file' 
               })
-              .select()
-              .single();
+              .select().single();
               
-          if (dbError) {
-              console.error("Erro ao salvar metadados do anexo no banco:", dbError);
-              return null;
-          }
-
+          if (dbError) return null;
           return attData;
-      } catch (e) {
-          console.error("Exceção no upload:", e);
-          return null;
-      }
+      } catch (e) { return null; }
   },
 
   deleteAttachment: async (id: string) => {
@@ -405,7 +389,10 @@ export const api = {
             task_id: taskData.id,
             title: s.title,
             completed: false,
-            duration: s.duration || 1
+            duration: s.duration || 1,
+            start_date: s.startDate,
+            due_date: s.dueDate,
+            assignee_id: s.assigneeId
         }));
         
         await supabase.from('subtasks').insert(subtasksToInsert);
@@ -423,16 +410,14 @@ export const api = {
       progress: task.progress, approval_status: task.approvalStatus, approver_id: task.approverId,
       start_date: task.startDate, due_date: task.dueDate,
       started_at: task.startedAt, completed_at: task.completedAt,
-      updated_at: new Date().toISOString() // Adiciona data de atualização explicitamente
+      updated_at: new Date().toISOString()
     };
 
     const { error } = await supabase.from('tasks').update(dbUpdates).eq('id', task.id);
-    
     if (error) {
         console.error("Erro ao atualizar tarefa (Supabase):", error);
-        alert(`Erro ao salvar tarefa: ${error.message}. Verifique sua conexão ou permissões.`);
+        alert(`Erro ao salvar tarefa: ${error.message}.`);
     }
-    
     return !error;
   },
 
@@ -445,7 +430,6 @@ export const api = {
   createSubtask: async (taskId: string, title: string, duration: number = 1) => {
       const { data, error } = await supabase.from('subtasks').insert({ task_id: taskId, title, completed: false, duration }).select().single();
       if (!error) {
-          // Log timeline event
           await api.logTimelineEvent(taskId, 'subtask_update', undefined, undefined, `Atividade criada: ${title}`);
       }
       return { success: !error, data: data ? { id: data.id, title: data.title, completed: data.completed, assignee_id: data.assignee_id, duration: data.duration, startDate: data.start_date, dueDate: data.due_date } : null };
