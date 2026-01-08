@@ -181,18 +181,26 @@ export const api = {
 
   getTaskDetails: async (taskId: string) => {
       // Fetch task details AND timeline
-      const [taskRes, timelineRes] = await Promise.all([
-          supabase.from('tasks').select('*, subtasks(*), attachments(*), comments(*)').eq('id', taskId).single(),
-          supabase.from('task_timeline').select('*, profiles(name, avatar_url)').eq('task_id', taskId).order('created_at', { ascending: true })
-      ]);
+      // Usamos uma query mais permissiva no join com profiles para evitar erros se a FK não estiver estrita
+      const { data: taskData, error: taskError } = await supabase
+          .from('tasks')
+          .select('*, subtasks(*), attachments(*), comments(*)')
+          .eq('id', taskId)
+          .single();
 
-      if (!taskRes.data) return null;
+      if (taskError || !taskData) return null;
       
-      const mappedTask = mapTask(taskRes.data);
+      const mappedTask = mapTask(taskData);
       
-      // Map Timeline
-      if (timelineRes.data) {
-          mappedTask.timeline = timelineRes.data.map((t: any) => ({
+      // Separate query for timeline to safely join profiles
+      const { data: timelineData, error: timelineError } = await supabase
+          .from('task_timeline')
+          .select('*, profiles(name, avatar_url)')
+          .eq('task_id', taskId)
+          .order('created_at', { ascending: true });
+
+      if (!timelineError && timelineData) {
+          mappedTask.timeline = timelineData.map((t: any) => ({
               id: t.id,
               taskId: t.task_id,
               userId: t.user_id,
@@ -223,7 +231,10 @@ export const api = {
           old_status: oldStatus,
           reason: reason
       });
-      if (error) console.error("Error logging timeline:", error);
+      
+      if (error) {
+          console.error("FATAL: Error logging timeline. Verifique se a tabela 'task_timeline' existe e tem permissões RLS.", error);
+      }
       return !error;
   },
 
