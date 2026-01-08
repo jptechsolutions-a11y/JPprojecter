@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2, Calendar as CalendarIcon, Clock, Trash2, AlertCircle, AlertTriangle } from 'lucide-react';
+import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2, Calendar as CalendarIcon, Clock, Trash2, AlertCircle, AlertTriangle, X } from 'lucide-react';
 import { Avatar } from './components/Avatar';
 import { Modal } from './components/Modal';
 import { TaskDetail } from './components/TaskDetail';
@@ -68,43 +68,38 @@ const TaskCard: React.FC<{ task: Task; allUsers: User[]; onClick: () => void; on
       draggable
       onDragStart={(e) => onDragStart(e, task)}
       onClick={onClick}
-      className="bg-white dark:bg-[#1e293b] p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group relative overflow-hidden"
+      className="bg-white dark:bg-[#1e293b] p-3 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group relative overflow-hidden"
     >
-      <div className="flex justify-between items-start mb-3">
+      <div className="flex justify-between items-start mb-2">
         <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${priorityColors[task.priority]}`}>
           {task.priority}
         </span>
         <div className="flex -space-x-2 overflow-hidden pl-1">
             {responsibles.slice(0, 3).map(u => (
-                <Avatar key={u.id} src={u.avatar} alt={u.name} size="sm" className="inline-block ring-2 ring-white dark:ring-[#1e293b] w-6 h-6 text-[10px]" />
+                <Avatar key={u.id} src={u.avatar} alt={u.name} size="sm" className="inline-block ring-2 ring-white dark:ring-[#1e293b] w-5 h-5 text-[9px]" />
             ))}
-            {responsibles.length > 3 && (
-                <div className="w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-700 text-[9px] flex items-center justify-center font-bold text-gray-500 ring-2 ring-white dark:ring-[#1e293b]">
-                    +{responsibles.length - 3}
-                </div>
-            )}
         </div>
       </div>
       
-      <h3 className="text-gray-800 dark:text-gray-100 font-semibold mb-3 leading-tight group-hover:text-[#00b4d8] transition-colors text-sm">
+      <h3 className="text-gray-800 dark:text-gray-100 font-semibold mb-2 leading-tight group-hover:text-[#00b4d8] transition-colors text-xs line-clamp-2">
         {task.title}
       </h3>
       
       {deadline && (
-          <div className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded mb-2 w-fit ${deadline.color}`}>
+          <div className={`flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded mb-2 w-fit ${deadline.color}`}>
               <deadline.icon size={10} /> {deadline.label}
           </div>
       )}
       
-      <div className="w-full bg-gray-100 dark:bg-gray-700 h-1.5 rounded-full mt-2 mb-2 overflow-hidden">
+      <div className="w-full bg-gray-100 dark:bg-gray-700 h-1 rounded-full mt-2 mb-2 overflow-hidden">
         <div 
             className={`h-full rounded-full transition-all duration-500 ${task.progress === 100 ? 'bg-teal-500' : 'bg-[#00b4d8]'}`} 
             style={{ width: `${task.progress}%` }}
         ></div>
       </div>
 
-      <div className="flex items-center justify-between text-gray-400 dark:text-gray-500 text-xs">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between text-gray-400 dark:text-gray-500 text-[10px]">
+        <div className="flex items-center gap-2">
            {task.subtasks.length > 0 && (
              <span className="flex items-center gap-1" title="Checklist">
                <span className={completedSubtasks === task.subtasks.length ? 'text-teal-500' : ''}>
@@ -154,6 +149,10 @@ export default function App() {
   const [newTaskSubAssignee, setNewTaskSubAssignee] = useState('');
   const [newTaskAssignee, setNewTaskAssignee] = useState(''); // Estado para o Responsável da Tarefa Principal
   const [newTaskStartDate, setNewTaskStartDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Kanban Customization State
+  const [isAddingColumn, setIsAddingColumn] = useState(false);
+  const [newColumnTitle, setNewColumnTitle] = useState('');
 
   const [currentUser, setCurrentUser] = useState<User | null>(null); 
   const [hasTeams, setHasTeams] = useState<boolean>(true);
@@ -290,6 +289,25 @@ export default function App() {
     setTasks(prev => prev.filter(t => t.id !== taskId));
     setSelectedTask(null);
     await api.deleteTask(taskId);
+  };
+
+  // --- Kanban Column Management ---
+  const handleAddColumn = async () => {
+      if (!newColumnTitle.trim()) return;
+      const newCol = await api.createColumn(newColumnTitle.trim());
+      if (newCol) {
+          setColumns([...columns, newCol]);
+          setNewColumnTitle('');
+          setIsAddingColumn(false);
+      }
+  };
+
+  const handleDeleteColumn = async (columnId: string) => {
+      if (!confirm("Excluir esta lista? As tarefas não serão apagadas, mas ficarão sem status visual.")) return;
+      const success = await api.deleteColumn(columnId);
+      if (success) {
+          setColumns(columns.filter(c => c.id !== columnId));
+      }
   };
 
   // --- Task Creation Logic ---
@@ -527,40 +545,100 @@ export default function App() {
            </div>
         </header>
 
-        <div className="flex-1 overflow-auto p-6 scrollbar-hide">
-           {activeView === 'list' && <ProjectListView tasks={filteredTasks} taskGroups={currentGroups} users={users} onTaskClick={handleTaskClick} onAddTask={(groupId) => { setPreSelectedGroupId(groupId); setIsNewTaskModalOpen(true); }} onUpdateTask={handleUpdateTask} onDeleteProject={handleDeleteProject} />}
+        <div className="flex-1 overflow-auto p-0 scrollbar-hide">
+           {activeView === 'list' && <div className="p-6"><ProjectListView tasks={filteredTasks} taskGroups={currentGroups} users={users} onTaskClick={handleTaskClick} onAddTask={(groupId) => { setPreSelectedGroupId(groupId); setIsNewTaskModalOpen(true); }} onUpdateTask={handleUpdateTask} onDeleteProject={handleDeleteProject} /></div>}
+           
+           {/* Trello-like Board View */}
            {activeView === 'board' && (
-               <div className="flex h-full gap-6 overflow-x-auto pb-4 items-start snap-x">
-                 {columns.map(column => {
-                   const columnTasks = filteredTasks.filter(t => t.status === column.id);
-                   return (
-                     <div key={column.id} className="min-w-[300px] w-[300px] flex flex-col snap-center shrink-0" onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }} onDrop={(e) => {
-                         e.preventDefault();
-                         const taskId = e.dataTransfer.getData('taskId');
-                         const task = tasks.find(t => t.id === taskId);
-                         if(task && task.status !== column.id) {
-                             handleUpdateTask({ ...task, status: column.id });
-                         }
-                     }}>
-                       <div className={`flex items-center justify-between p-3 rounded-t-xl ${column.color} dark:bg-[#1e293b] border-b-2 border-[#00b4d8]`}>
-                         <h3 className="font-bold text-gray-700 dark:text-gray-200 text-sm">{column.title}</h3>
-                         <span className="bg-white/50 dark:bg-black/30 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded text-xs font-bold">{columnTasks.length}</span>
-                       </div>
-                       <div className={`p-3 space-y-3 bg-gray-50 dark:bg-[#0f172a] border-x border-b border-gray-200 dark:border-gray-700 rounded-b-xl h-full min-h-[150px]`}>
-                         {columnTasks.map(task => (
-                           <TaskCard key={task.id} task={task} allUsers={users} onClick={() => handleTaskClick(task)} onDragStart={(e, t) => e.dataTransfer.setData('taskId', t.id)} />
-                         ))}
-                       </div>
+               <div className="h-full overflow-x-auto overflow-y-hidden whitespace-nowrap p-4 bg-[#0079bf] dark:bg-[#021221] bg-opacity-10 dark:bg-opacity-100">
+                 <div className="flex h-full gap-4 items-start">
+                     {columns.map(column => {
+                       const columnTasks = filteredTasks.filter(t => (t.status === column.id || t.status === column.title));
+                       return (
+                         <div 
+                            key={column.id} 
+                            className="w-72 flex-shrink-0 flex flex-col max-h-full bg-gray-100 dark:bg-[#101204] dark:bg-[#1e293b] rounded-xl border border-gray-300 dark:border-gray-700 shadow-sm"
+                            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }} 
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                const taskId = e.dataTransfer.getData('taskId');
+                                const task = tasks.find(t => t.id === taskId);
+                                // Fallback to handle both ID or Title matching for status
+                                if(task && task.status !== column.title && task.status !== column.id) {
+                                    // Prefer title for visual status, or id if standard
+                                    const newStatus = column.title || column.id;
+                                    handleUpdateTask({ ...task, status: newStatus });
+                                }
+                            }}
+                         >
+                           {/* Column Header */}
+                           <div className="p-3 font-bold text-gray-700 dark:text-gray-200 text-sm flex justify-between items-center handle cursor-grab active:cursor-grabbing border-b border-gray-200 dark:border-gray-600">
+                             <div className="flex items-center gap-2">
+                                <span className="truncate">{column.title}</span>
+                                <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-1.5 py-0.5 rounded text-[10px]">{columnTasks.length}</span>
+                             </div>
+                             <div className="flex items-center">
+                                 <button onClick={() => handleDeleteColumn(column.id)} className="p-1 text-gray-400 hover:text-red-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors">
+                                     <Trash2 size={12} />
+                                 </button>
+                             </div>
+                           </div>
+                           
+                           {/* Cards Container */}
+                           <div className="p-2 space-y-2 overflow-y-auto flex-1 custom-scrollbar min-h-[50px]">
+                             {columnTasks.map(task => (
+                               <TaskCard key={task.id} task={task} allUsers={users} onClick={() => handleTaskClick(task)} onDragStart={(e, t) => e.dataTransfer.setData('taskId', t.id)} />
+                             ))}
+                           </div>
+
+                           {/* Column Footer */}
+                           <div className="p-2 pt-0">
+                               <button 
+                                onClick={() => { setIsNewTaskModalOpen(true); /* You might want to pre-select status here in a real app */ }}
+                                className="w-full py-1.5 flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-xs font-medium px-2 transition-colors"
+                               >
+                                   <Plus size={14} /> Adicionar um cartão
+                               </button>
+                           </div>
+                         </div>
+                       );
+                     })}
+
+                     {/* Add List Button */}
+                     <div className="w-72 flex-shrink-0">
+                        {isAddingColumn ? (
+                            <div className="bg-gray-100 dark:bg-[#1e293b] p-2 rounded-xl border border-gray-300 dark:border-gray-700 animate-fade-in">
+                                <input 
+                                    autoFocus
+                                    value={newColumnTitle}
+                                    onChange={(e) => setNewColumnTitle(e.target.value)}
+                                    placeholder="Título da lista..."
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg mb-2 focus:ring-2 focus:ring-[#00b4d8] outline-none bg-white dark:bg-[#0f172a] dark:text-white"
+                                    onKeyDown={(e) => e.key === 'Enter' && handleAddColumn()}
+                                />
+                                <div className="flex gap-2">
+                                    <button onClick={handleAddColumn} className="bg-[#00b4d8] hover:bg-[#0096c7] text-white px-3 py-1.5 rounded text-xs font-bold transition-colors">Adicionar lista</button>
+                                    <button onClick={() => setIsAddingColumn(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><X size={18} /></button>
+                                </div>
+                            </div>
+                        ) : (
+                            <button 
+                                onClick={() => setIsAddingColumn(true)}
+                                className="w-full bg-white/20 hover:bg-white/30 dark:bg-gray-800/50 dark:hover:bg-gray-800/80 p-3 rounded-xl text-white dark:text-gray-300 text-sm font-bold flex items-center gap-2 transition-all backdrop-blur-sm border border-white/10 dark:border-gray-700"
+                            >
+                                <Plus size={16} /> Adicionar outra lista
+                            </button>
+                        )}
                      </div>
-                   );
-                 })}
+                 </div>
                </div>
            )}
-           {activeView === 'gantt' && <GanttView tasks={filteredTasks} users={users} onTaskClick={handleTaskClick} />}
-           {activeView === 'dashboard' && <DashboardView tasks={tasks.filter(t => t.teamId === currentTeamId)} users={users} />}
-           {activeView === 'routines' && <RoutineTasksView routines={routines} users={users} currentTeamId={currentTeamId || ''} onToggleRoutine={(id) => { api.updateRoutine(id, { lastCompletedDate: new Date().toISOString().split('T')[0] }).then(loadData); }} onAddRoutine={async (r) => { await api.createRoutine(r); loadData(); }} />}
-           {activeView === 'profile' && currentUser && <ProfileView currentUser={currentUser} />}
-           {activeView === 'team' && currentTeam && currentUser && <TeamView users={users} currentTeam={currentTeam} currentUser={currentUser} onDeleteTeam={handleDeleteTeam} roles={roles} onRolesUpdate={loadData} />}
+
+           {activeView === 'gantt' && <div className="p-6 h-full"><GanttView tasks={filteredTasks} users={users} onTaskClick={handleTaskClick} /></div>}
+           {activeView === 'dashboard' && <div className="p-6"><DashboardView tasks={tasks.filter(t => t.teamId === currentTeamId)} users={users} /></div>}
+           {activeView === 'routines' && <div className="p-6"><RoutineTasksView routines={routines} users={users} currentTeamId={currentTeamId || ''} onToggleRoutine={(id) => { api.updateRoutine(id, { lastCompletedDate: new Date().toISOString().split('T')[0] }).then(loadData); }} onAddRoutine={async (r) => { await api.createRoutine(r); loadData(); }} /></div>}
+           {activeView === 'profile' && currentUser && <div className="p-6"><ProfileView currentUser={currentUser} /></div>}
+           {activeView === 'team' && currentTeam && currentUser && <div className="p-6"><TeamView users={users} currentTeam={currentTeam} currentUser={currentUser} onDeleteTeam={handleDeleteTeam} roles={roles} onRolesUpdate={loadData} /></div>}
         </div>
       </main>
 
@@ -598,7 +676,7 @@ export default function App() {
              <div className="flex-1">
                 <label className="block text-sm font-bold mb-1 dark:text-gray-300">Status Inicial</label>
                 <select name="status" className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-[#1e293b] border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white outline-none">
-                    {columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                    {columns.map(c => <option key={c.id} value={c.title || c.id}>{c.title}</option>)}
                 </select>
              </div>
           </div>
