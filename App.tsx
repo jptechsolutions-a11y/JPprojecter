@@ -31,7 +31,7 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, collapsed }: any) => 
   </button>
 );
 
-const TaskCard: React.FC<{ task: Task; user?: User; onClick: () => void; onDragStart: (e: React.DragEvent, task: Task) => void }> = ({ task, user, onClick, onDragStart }) => {
+const TaskCard: React.FC<{ task: Task; allUsers: User[]; onClick: () => void; onDragStart: (e: React.DragEvent, task: Task) => void }> = ({ task, allUsers, onClick, onDragStart }) => {
   const priorityColors = {
     'Baixa': 'bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-200 border-teal-200 dark:border-teal-800',
     'Média': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-200 border-yellow-200 dark:border-yellow-800',
@@ -58,6 +58,11 @@ const TaskCard: React.FC<{ task: Task; user?: User; onClick: () => void; onDragS
   
   const deadline = getDeadlineStatus();
 
+  // Get all unique users involved (Assignee + Support)
+  const assignee = allUsers.find(u => u.id === task.assigneeId);
+  const supportUsers = allUsers.filter(u => task.supportIds?.includes(u.id));
+  const responsibles = Array.from(new Set([assignee, ...supportUsers].filter(Boolean))) as User[];
+
   return (
     <div 
       draggable
@@ -69,7 +74,16 @@ const TaskCard: React.FC<{ task: Task; user?: User; onClick: () => void; onDragS
         <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${priorityColors[task.priority]}`}>
           {task.priority}
         </span>
-        {user && <Avatar src={user.avatar} alt={user.name} size="sm" />}
+        <div className="flex -space-x-2 overflow-hidden pl-1">
+            {responsibles.slice(0, 3).map(u => (
+                <Avatar key={u.id} src={u.avatar} alt={u.name} size="sm" className="inline-block ring-2 ring-white dark:ring-[#1e293b] w-6 h-6 text-[10px]" />
+            ))}
+            {responsibles.length > 3 && (
+                <div className="w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-700 text-[9px] flex items-center justify-center font-bold text-gray-500 ring-2 ring-white dark:ring-[#1e293b]">
+                    +{responsibles.length - 3}
+                </div>
+            )}
+        </div>
       </div>
       
       <h3 className="text-gray-800 dark:text-gray-100 font-semibold mb-3 leading-tight group-hover:text-[#00b4d8] transition-colors text-sm">
@@ -524,7 +538,7 @@ export default function App() {
                        </div>
                        <div className={`p-3 space-y-3 bg-gray-50 dark:bg-[#0f172a] border-x border-b border-gray-200 dark:border-gray-700 rounded-b-xl h-full min-h-[150px]`}>
                          {columnTasks.map(task => (
-                           <TaskCard key={task.id} task={task} user={users.find(u => u.id === task.assigneeId)} onClick={() => handleTaskClick(task)} onDragStart={(e, t) => e.dataTransfer.setData('taskId', t.id)} />
+                           <TaskCard key={task.id} task={task} allUsers={users} onClick={() => handleTaskClick(task)} onDragStart={(e, t) => e.dataTransfer.setData('taskId', t.id)} />
                          ))}
                        </div>
                      </div>

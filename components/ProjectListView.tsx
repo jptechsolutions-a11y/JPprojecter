@@ -150,6 +150,11 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                    const isExpanded = expandedTasks.has(task.id);
                    const hasSubtasks = task.subtasks && task.subtasks.length > 0;
 
+                   // Responsibles
+                   const assignee = users.find(u => u.id === task.assigneeId);
+                   const supportUsers = users.filter(u => task.supportIds?.includes(u.id));
+                   const responsibles = Array.from(new Set([assignee, ...supportUsers].filter(Boolean))) as User[];
+
                    return (
                     <React.Fragment key={task.id}>
                         <div className="grid grid-cols-12 h-14 items-center hover:bg-gray-50 dark:hover:bg-[#1e293b] transition-colors border-b border-gray-100 dark:border-gray-800 cursor-pointer text-sm" onClick={() => onTaskClick(task)}>
@@ -160,15 +165,25 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                                     {hasSubtasks && (
                                         <button 
                                             onClick={(e) => toggleTask(task.id, e)} 
-                                            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+                                            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors shrink-0"
                                         >
                                             {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                                         </button>
                                     )}
-                                    {!hasSubtasks && <div className="w-4"></div>} {/* Spacer */}
+                                    {!hasSubtasks && <div className="w-4 shrink-0"></div>} {/* Spacer */}
                                     
-                                    <div className="flex flex-col truncate">
-                                        <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{task.title}</span>
+                                    <div className="flex flex-col truncate min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{task.title}</span>
+                                            {responsibles.length > 0 && (
+                                                <div className="flex -space-x-1.5 shrink-0">
+                                                    {responsibles.slice(0, 3).map(u => (
+                                                        <Avatar key={u.id} src={u.avatar} alt={u.name} size="sm" className="w-5 h-5 text-[8px] ring-1 ring-white dark:ring-[#1e293b]" />
+                                                    ))}
+                                                    {responsibles.length > 3 && <div className="w-5 h-5 rounded-full bg-gray-200 dark:bg-gray-600 text-[8px] flex items-center justify-center font-bold text-gray-500 ring-1 ring-white">+{responsibles.length-3}</div>}
+                                                </div>
+                                            )}
+                                        </div>
                                         {deadlineInfo && (
                                             <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold flex items-center gap-1 w-fit mt-0.5 ${deadlineInfo.color}`}>
                                                 <deadlineInfo.icon size={10} /> {deadlineInfo.label}

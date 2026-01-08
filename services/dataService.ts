@@ -390,8 +390,9 @@ export const api = {
   updateTask: async (task: Task) => {
     const dbUpdates: any = {
       group_id: task.groupId, title: task.title, description: task.description,
-      status: task.status, priority: task.priority, assignee_id: task.assigneeId,
-      support_ids: task.supportIds, // Added support_ids here
+      status: task.status, priority: task.priority, 
+      assignee_id: task.assigneeId || null, // Force null if undefined to clear
+      support_ids: task.supportIds || [],   // Force empty array if undefined
       progress: task.progress, approval_status: task.approvalStatus, approver_id: task.approverId,
       start_date: task.startDate, due_date: task.dueDate,
       started_at: task.startedAt, completed_at: task.completedAt
