@@ -25,7 +25,7 @@ const mapTask = (t: any): Task => ({
   status: t.status,
   priority: t.priority,
   assigneeId: t.assignee_id,
-  supportIds: t.support_ids || [],
+  supportIds: t.support_ids || [], // Garante array vazio se null
   startDate: t.start_date,
   dueDate: t.due_date,
   tags: t.tags || [],
@@ -222,6 +222,7 @@ export const api = {
           old_status: oldStatus,
           reason: reason
       });
+      if (error) console.error("Error logging timeline:", error);
       return !error;
   },
 
@@ -392,13 +393,19 @@ export const api = {
       group_id: task.groupId, title: task.title, description: task.description,
       status: task.status, priority: task.priority, 
       assignee_id: task.assigneeId || null, // Force null if undefined to clear
-      support_ids: task.supportIds || [],   // Force empty array if undefined
+      support_ids: task.supportIds ?? [],   // Force empty array if undefined (use nullish coalescing)
       progress: task.progress, approval_status: task.approvalStatus, approver_id: task.approverId,
       start_date: task.startDate, due_date: task.dueDate,
       started_at: task.startedAt, completed_at: task.completedAt
     };
 
     const { error } = await supabase.from('tasks').update(dbUpdates).eq('id', task.id);
+    
+    if (error) {
+        console.error("Erro ao atualizar tarefa (Supabase):", error);
+        alert(`Erro ao salvar tarefa: ${error.message}. Verifique sua conexão ou permissões.`);
+    }
+    
     return !error;
   },
 
