@@ -44,11 +44,11 @@ export interface Subtask {
   id: string;
   title: string;
   completed: boolean;
-  assigneeId?: string;
+  assigneeId?: string; // Campo Adicionado
   dueDate?: string;
   startDate?: string;
-  duration: number; // Dias de esforço
-  completedAt?: string; // Novo
+  duration: number; 
+  completedAt?: string;
 }
 
 export interface Attachment {
@@ -66,13 +66,12 @@ export interface Comment {
   createdAt: string;
 }
 
-// Nova Interface para Timeline
 export interface TaskTimelineEntry {
   id: string;
   taskId: string;
   userId?: string;
-  userName?: string; // Preenchido no front/service
-  userAvatar?: string; // Preenchido no front/service
+  userName?: string; 
+  userAvatar?: string;
   eventType: 'created' | 'started' | 'completed' | 'paused' | 'cancelled' | 'resumed' | 'subtask_update' | 'info';
   oldStatus?: string;
   newStatus?: string;
@@ -97,12 +96,12 @@ export interface Task {
   attachments: Attachment[];
   comments: Comment[];
   createdAt: string;
-  startedAt?: string;   // Novo
-  completedAt?: string; // Novo
+  startedAt?: string;   
+  completedAt?: string; 
   teamId: string;
   approvalStatus: ApprovalStatus;
   approverId?: string;
-  timeline?: TaskTimelineEntry[]; // Novo
+  timeline?: TaskTimelineEntry[]; 
 }
 
 export interface Column {

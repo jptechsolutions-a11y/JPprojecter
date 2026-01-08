@@ -40,7 +40,7 @@ const mapTask = (t: any): Task => ({
     id: s.id,
     title: s.title,
     completed: s.completed,
-    assigneeId: s.assignee_id, 
+    assigneeId: s.assignee_id, // Mapped
     dueDate: s.due_date,       
     startDate: s.start_date,   
     duration: s.duration || 1,
@@ -59,7 +59,7 @@ const mapTask = (t: any): Task => ({
     text: c.text,
     createdAt: c.created_at
   })),
-  timeline: [] // Will be populated separately if needed or on demand
+  timeline: [] 
 });
 
 // --- Constants ---
@@ -386,6 +386,7 @@ export const api = {
           dbUpdates.completed = updates.completed;
           dbUpdates.completed_at = updates.completed ? new Date().toISOString() : null;
       }
+      if (updates.assigneeId !== undefined) dbUpdates.assignee_id = updates.assigneeId || null;
       if (updates.duration !== undefined) dbUpdates.duration = updates.duration;
       if (updates.startDate !== undefined) dbUpdates.start_date = updates.startDate;
       if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate;

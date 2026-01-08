@@ -141,7 +141,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
     
     if (createdSubtasks.length > 0) {
         const updatedSubtasks = [...task.subtasks, ...createdSubtasks];
-        onUpdate({ ...task, subtasks: updatedSubtasks }); // Progress recalc is handled in toggleSubtask logic usually, but here just adding
+        onUpdate({ ...task, subtasks: updatedSubtasks }); 
     }
     setIsGeneratingSubs(false);
   };
@@ -245,11 +245,39 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
   };
 
   const handleSubtaskChange = async (subtaskId: string, field: keyof Subtask, value: any) => {
+      const subtask = task.subtasks.find(st => st.id === subtaskId);
       const updatedSubtasks = task.subtasks.map(st => 
           st.id === subtaskId ? { ...st, [field]: value } : st
       );
+      
       onUpdate({ ...task, subtasks: updatedSubtasks });
       await api.updateSubtask(subtaskId, { [field]: value });
+
+      // Se o campo alterado for o responsável, logar na timeline
+      if (field === 'assigneeId' && subtask) {
+           const assignedUser = users.find(u => u.id === value);
+           const userName = assignedUser ? assignedUser.name : 'Ninguém';
+           await api.logTimelineEvent(
+               task.id, 
+               'subtask_update', 
+               undefined, 
+               undefined, 
+               `Atividade "${subtask.title}" atribuída para: ${userName}`
+           );
+           
+           // Refresh timeline visually (optional, can be improved by appending to local state)
+           const newTimelineEntry: TaskTimelineEntry = {
+               id: crypto.randomUUID(),
+               taskId: task.id,
+               eventType: 'subtask_update',
+               reason: `Atividade "${subtask.title}" atribuída para: ${userName}`,
+               createdAt: new Date().toISOString(),
+               userName: currentUser.name,
+               userAvatar: currentUser.avatar
+           };
+           const newTimeline = task.timeline ? [...task.timeline, newTimelineEntry] : [newTimelineEntry];
+           onUpdate({ ...task, subtasks: updatedSubtasks, timeline: newTimeline });
+      }
   };
 
   // --- Attachments ---
@@ -425,9 +453,10 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
               {/* Header Row */}
               <div className="grid grid-cols-12 gap-4 px-2 mb-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                   <div className="col-span-1 text-center">Feito?</div>
-                  <div className="col-span-5">Atividade</div>
-                  <div className="col-span-3">Início</div>
-                  <div className="col-span-3">Fim / Conclusão</div>
+                  <div className="col-span-4">Atividade</div>
+                  <div className="col-span-2">Início</div>
+                  <div className="col-span-2">Fim</div>
+                  <div className="col-span-3">Responsável</div>
               </div>
 
               {task.subtasks.map(st => (
@@ -440,7 +469,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                             className="w-5 h-5 rounded border-gray-300 cursor-pointer accent-indigo-600 focus:ring-indigo-500" 
                           />
                       </div>
-                      <div className="col-span-5">
+                      <div className="col-span-4">
                           <input 
                             type="text"
                             value={st.title}
@@ -449,7 +478,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                             placeholder="Nome da atividade"
                           />
                       </div>
-                      <div className="col-span-3">
+                      <div className="col-span-2">
                           <input 
                             type="date"
                             value={st.startDate ? st.startDate.split('T')[0] : ''}
@@ -457,9 +486,9 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                             className="w-full text-xs bg-transparent border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-gray-600 dark:text-gray-400 focus:ring-1 focus:ring-indigo-500"
                           />
                       </div>
-                      <div className="col-span-3 flex items-center gap-2">
+                      <div className="col-span-2">
                           {st.completed && st.completedAt ? (
-                              <span className="text-[10px] text-green-600 font-bold bg-green-50 px-2 py-1 rounded">
+                              <span className="text-[10px] text-green-600 font-bold bg-green-50 px-2 py-1 rounded w-full block text-center">
                                   {new Date(st.completedAt).toLocaleDateString()}
                               </span>
                           ) : (
@@ -470,6 +499,16 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                                 className="w-full text-xs bg-transparent border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-gray-600 dark:text-gray-400 focus:ring-1 focus:ring-indigo-500"
                             />
                           )}
+                      </div>
+                      <div className="col-span-3 flex items-center gap-2">
+                          <select
+                             value={st.assigneeId || ''}
+                             onChange={(e) => handleSubtaskChange(st.id, 'assigneeId', e.target.value)}
+                             className="w-full text-xs bg-transparent border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-gray-600 dark:text-gray-400 focus:ring-1 focus:ring-indigo-500"
+                          >
+                             <option value="">Sem dono</option>
+                             {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                          </select>
                           <button onClick={() => deleteSubtask(st.id)} className="text-gray-400 hover:text-red-500 p-1 rounded opacity-0 group-hover:opacity-100 transition-all ml-auto">
                               <Trash2 size={14} />
                           </button>
@@ -554,6 +593,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                        case 'paused': Icon = PauseCircle; color = "bg-orange-100 text-orange-600"; break;
                        case 'cancelled': Icon = XCircle; color = "bg-red-100 text-red-600"; break;
                        case 'resumed': Icon = PlayCircle; color = "bg-blue-100 text-blue-600"; break;
+                       case 'subtask_update': Icon = CheckSquare; color = "bg-purple-100 text-purple-600"; break;
                    }
 
                    return (
@@ -564,7 +604,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                             <div className="flex-1 bg-gray-50 dark:bg-[#1b263b]/40 p-3 rounded-lg border border-gray-100 dark:border-gray-800">
                                 <div className="flex justify-between items-start mb-1">
                                     <span className="text-xs font-bold text-gray-700 dark:text-gray-200 capitalize">
-                                        {event.eventType === 'subtask_update' ? 'Atualização' : event.eventType === 'status_change' ? 'Mudança de Status' : event.eventType === 'created' ? 'Criado' : event.eventType === 'started' ? 'Iniciado' : event.eventType === 'completed' ? 'Finalizado' : event.eventType === 'paused' ? 'Pausado' : event.eventType === 'cancelled' ? 'Cancelado' : 'Retomado'}
+                                        {event.eventType === 'subtask_update' ? 'Atividade' : event.eventType === 'status_change' ? 'Mudança de Status' : event.eventType === 'created' ? 'Criado' : event.eventType === 'started' ? 'Iniciado' : event.eventType === 'completed' ? 'Finalizado' : event.eventType === 'paused' ? 'Pausado' : event.eventType === 'cancelled' ? 'Cancelado' : 'Retomado'}
                                     </span>
                                     <span className="text-[10px] text-gray-400">
                                         {new Date(event.createdAt).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'})}
