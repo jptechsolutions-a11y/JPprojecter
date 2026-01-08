@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Task, User, Priority, Status, Subtask, Attachment, Comment, Column, ApprovalStatus, TaskTimelineEntry } from '../types';
-import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2, AlertTriangle, Layout, PlayCircle, CheckCircle2, PauseCircle, XCircle } from 'lucide-react';
+import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2, AlertTriangle, Layout, PlayCircle, CheckCircle2, PauseCircle, XCircle, Info } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { generateSubtasks, generateTaskDescription } from '../services/geminiService';
 import { api } from '../services/dataService';
@@ -49,17 +49,58 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
 
   const deadlineAlert = getDeadlineAlert();
 
+  // --- GENERIC FIELD UPDATER WITH LOGGING ---
+  const handleFieldUpdate = async (field: keyof Task, value: any, logMessage?: string) => {
+      // Don't update if value hasn't changed (shallow check)
+      if (task[field] === value) return;
+
+      const updatedTask = { ...task, [field]: value };
+      
+      // Calculate automated log message if not provided
+      let finalLogMessage = logMessage;
+      if (!finalLogMessage) {
+          if (field === 'title') finalLogMessage = `Título alterado para "${value}"`;
+          else if (field === 'description') finalLogMessage = `Descrição da tarefa atualizada`;
+          else if (field === 'priority') finalLogMessage = `Prioridade alterada para ${value}`;
+          else if (field === 'startDate') finalLogMessage = `Data de início alterada para ${new Date(value).toLocaleDateString()}`;
+          else if (field === 'dueDate') finalLogMessage = `Data de entrega alterada para ${new Date(value).toLocaleDateString()}`;
+          else if (field === 'assigneeId') {
+              const u = users.find(u => u.id === value);
+              finalLogMessage = `Responsável principal alterado para ${u ? u.name : 'Ninguém'}`;
+          }
+      }
+
+      // Optimistic update
+      onUpdate(updatedTask); // Calls parent to update local state
+      
+      // API Calls
+      await api.updateTask(updatedTask);
+      
+      if (finalLogMessage) {
+          await api.logTimelineEvent(task.id, 'info', undefined, undefined, finalLogMessage);
+          
+          // Add local timeline entry for immediate feedback
+          const newEntry: TaskTimelineEntry = {
+              id: crypto.randomUUID(),
+              taskId: task.id,
+              eventType: 'info',
+              reason: finalLogMessage,
+              createdAt: new Date().toISOString(),
+              userName: currentUser.name,
+              userAvatar: currentUser.avatar
+          };
+          onUpdate({ ...updatedTask, timeline: task.timeline ? [...task.timeline, newEntry] : [newEntry] });
+      }
+  };
+
   // Handle Status Change manually via dropdown
   const handleStatusChange = (newStatus: string) => {
-      // If manual change to Cancelled or Paused, require reason
       if (newStatus === 'Cancelado' || newStatus === 'Em Pausa') {
           setPendingStatus(newStatus);
           setShowStatusReasonModal(true);
       } else if (task.status === 'Em Pausa' && newStatus === 'Em Progresso') {
-          // Resume
           updateTaskStatus(newStatus, 'Retomado');
       } else {
-          // Normal change
           updateTaskStatus(newStatus);
       }
   };
@@ -90,10 +131,8 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
       if (status === 'Cancelado') eventType = 'cancelled';
       if (status === 'Em Progresso' && task.status === 'Em Pausa') eventType = 'resumed';
 
-      // Update Local
       const updatedTask = { ...task, ...updates };
       
-      // Update Timeline Local (Optimistic)
       const newTimelineEntry: TaskTimelineEntry = {
           id: crypto.randomUUID(),
           taskId: task.id,
@@ -109,7 +148,6 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
       const newTimeline = task.timeline ? [...task.timeline, newTimelineEntry] : [newTimelineEntry];
       onUpdate({ ...updatedTask, timeline: newTimeline });
 
-      // API Call
       await api.updateTask(updatedTask);
       await api.logTimelineEvent(task.id, eventType, status, task.status, reason);
   };
@@ -117,8 +155,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
   const handleAiDescription = async () => {
     setIsGeneratingDesc(true);
     const desc = await generateTaskDescription(task.title);
-    onUpdate({ ...task, description: desc });
-    await api.updateTask({ ...task, description: desc });
+    await handleFieldUpdate('description', desc, 'Descrição gerada por IA');
     setIsGeneratingDesc(false);
   };
 
@@ -142,6 +179,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
     if (createdSubtasks.length > 0) {
         const updatedSubtasks = [...task.subtasks, ...createdSubtasks];
         onUpdate({ ...task, subtasks: updatedSubtasks }); 
+        // Adding subtasks logs internally in api.createSubtask, so we just refresh UI
     }
     setIsGeneratingSubs(false);
   };
@@ -152,17 +190,14 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
         const newCompleted = !subtask.completed;
         const now = new Date().toISOString();
 
-        // 1. Optimistic Subtask Update
         const updatedSubtasks = task.subtasks.map(st => 
           st.id === subtaskId ? { ...st, completed: newCompleted, completedAt: newCompleted ? now : undefined } : st
         );
 
-        // 2. Auto-Calculate Progress
         const total = updatedSubtasks.length;
         const completedCount = updatedSubtasks.filter(s => s.completed).length;
         const newProgress = total === 0 ? 0 : Math.round((completedCount / total) * 100);
 
-        // 3. Auto-Status Logic
         let newStatus = task.status;
         let eventType = 'subtask_update';
         let reason = `Atividade "${subtask.title}" ${newCompleted ? 'concluída' : 'reaberta'}`;
@@ -189,9 +224,8 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
 
         if (newStatus === 'Em Progresso' && !task.startedAt) taskUpdates.startedAt = now;
         if (newStatus === 'Concluído' && !task.completedAt) taskUpdates.completedAt = now;
-        if (newStatus !== 'Concluído') taskUpdates.completedAt = null; // Reset completion date if reopened
+        if (newStatus !== 'Concluído') taskUpdates.completedAt = null;
 
-        // Update Timeline
         const newTimelineEntry: TaskTimelineEntry = {
             id: crypto.randomUUID(),
             taskId: task.id,
@@ -207,9 +241,8 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
 
         onUpdate({ ...task, ...taskUpdates, timeline: newTimeline });
         
-        // API calls
         await api.updateSubtask(subtaskId, { completed: newCompleted });
-        await api.updateTask({ ...task, ...taskUpdates }); // Persist task status/progress
+        await api.updateTask({ ...task, ...taskUpdates }); 
         await api.logTimelineEvent(task.id, eventType, newStatus, task.status, reason);
     }
   };
@@ -228,17 +261,32 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
         const completed = updatedSubtasks.filter(s => s.completed).length;
         const newProgress = total === 0 ? 0 : Math.round((completed / total) * 100);
 
-        onUpdate({ ...task, subtasks: updatedSubtasks, progress: newProgress });
+        // Timeline log handled in api.createSubtask, but let's refresh UI timeline
+        const newTimelineEntry: TaskTimelineEntry = {
+             id: crypto.randomUUID(),
+             taskId: task.id,
+             eventType: 'subtask_update',
+             reason: 'Atividade criada: Nova sub-tarefa',
+             createdAt: new Date().toISOString(),
+             userName: currentUser.name,
+             userAvatar: currentUser.avatar
+        };
+        const newTimeline = task.timeline ? [...task.timeline, newTimelineEntry] : [newTimelineEntry];
+
+        onUpdate({ ...task, subtasks: updatedSubtasks, progress: newProgress, timeline: newTimeline });
         await api.updateTask({ ...task, progress: newProgress });
     }
   };
 
-  const deleteSubtask = async (subtaskId: string) => {
+  const deleteSubtask = async (subtaskId: string, subtaskTitle: string) => {
       const updatedSubtasks = task.subtasks.filter(st => st.id !== subtaskId);
       const total = updatedSubtasks.length;
       const completed = updatedSubtasks.filter(s => s.completed).length;
       const newProgress = total === 0 ? 0 : Math.round((completed / total) * 100);
 
+      // Log deletion
+      await api.logTimelineEvent(task.id, 'info', undefined, undefined, `Atividade excluída: ${subtaskTitle}`);
+      
       onUpdate({ ...task, subtasks: updatedSubtasks, progress: newProgress });
       await api.deleteSubtask(subtaskId);
       await api.updateTask({ ...task, progress: newProgress });
@@ -246,37 +294,39 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
 
   const handleSubtaskChange = async (subtaskId: string, field: keyof Subtask, value: any) => {
       const subtask = task.subtasks.find(st => st.id === subtaskId);
+      if(!subtask) return;
+
       const updatedSubtasks = task.subtasks.map(st => 
           st.id === subtaskId ? { ...st, [field]: value } : st
       );
       
+      // Determine if we need to log this specific change immediately to timeline
+      // Note: We don't want to log every keystroke for title, only onBlur ideally, but here we do it simply.
+      // Ideally move title update to onBlur. For dates and assignee, logging immediately is fine.
+      let logMsg = '';
+      if (field === 'assigneeId') {
+           const u = users.find(u => u.id === value);
+           logMsg = `Atividade "${subtask.title}" atribuída para: ${u ? u.name : 'Ninguém'}`;
+      } else if (field === 'dueDate') {
+           logMsg = `Prazo da atividade "${subtask.title}" alterado para ${new Date(value).toLocaleDateString()}`;
+      }
+
       onUpdate({ ...task, subtasks: updatedSubtasks });
       await api.updateSubtask(subtaskId, { [field]: value });
 
-      // Se o campo alterado for o responsável, logar na timeline
-      if (field === 'assigneeId' && subtask) {
-           const assignedUser = users.find(u => u.id === value);
-           const userName = assignedUser ? assignedUser.name : 'Ninguém';
-           await api.logTimelineEvent(
-               task.id, 
-               'subtask_update', 
-               undefined, 
-               undefined, 
-               `Atividade "${subtask.title}" atribuída para: ${userName}`
-           );
-           
-           // Refresh timeline visually (optional, can be improved by appending to local state)
-           const newTimelineEntry: TaskTimelineEntry = {
+      if (logMsg) {
+           await api.logTimelineEvent(task.id, 'subtask_update', undefined, undefined, logMsg);
+           // Refresh local timeline
+           const newEntry: TaskTimelineEntry = {
                id: crypto.randomUUID(),
                taskId: task.id,
                eventType: 'subtask_update',
-               reason: `Atividade "${subtask.title}" atribuída para: ${userName}`,
+               reason: logMsg,
                createdAt: new Date().toISOString(),
                userName: currentUser.name,
                userAvatar: currentUser.avatar
            };
-           const newTimeline = task.timeline ? [...task.timeline, newTimelineEntry] : [newTimelineEntry];
-           onUpdate({ ...task, subtasks: updatedSubtasks, timeline: newTimeline });
+           onUpdate({ ...task, subtasks: updatedSubtasks, timeline: task.timeline ? [...task.timeline, newEntry] : [newEntry] });
       }
   };
 
@@ -287,14 +337,17 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
       setIsUploading(true);
       const newAttachment = await api.uploadAttachment(task.id, file);
       if (newAttachment) {
+          const msg = `Arquivo anexado: ${file.name}`;
+          await api.logTimelineEvent(task.id, 'info', undefined, undefined, msg);
           onUpdate({ ...task, attachments: [...task.attachments, newAttachment] });
       }
       setIsUploading(false);
   };
 
-  const deleteAttachment = async (id: string) => {
+  const deleteAttachment = async (id: string, name: string) => {
     const success = await api.deleteAttachment(id);
     if (success) {
+        await api.logTimelineEvent(task.id, 'info', undefined, undefined, `Arquivo removido: ${name}`);
         onUpdate({ ...task, attachments: task.attachments.filter(a => a.id !== id) });
     }
   };
@@ -328,7 +381,8 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
               <input
                   type="text" 
                   value={task.title}
-                  onChange={(e) => onUpdate({ ...task, title: e.target.value })}
+                  onBlur={(e) => handleFieldUpdate('title', e.target.value)} // Log only on blur
+                  onChange={(e) => onUpdate({...task, title: e.target.value})} // Local update for typing
                   className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white border-b-2 border-transparent hover:border-gray-200 focus:border-indigo-500 focus:outline-none bg-transparent transition-all w-full leading-tight"
                   placeholder="Título da Tarefa"
               />
@@ -356,7 +410,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                   
                   <select
                     value={task.priority}
-                    onChange={(e) => onUpdate({ ...task, priority: e.target.value as Priority })}
+                    onChange={(e) => handleFieldUpdate('priority', e.target.value)}
                     className={`px-3 py-1.5 rounded-lg border text-sm font-bold outline-none
                       ${task.priority === 'Alta' ? 'bg-red-50 text-red-700 border-red-200' : 
                         task.priority === 'Média' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 
@@ -378,7 +432,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                 {users.map(u => (
                     <button 
                         key={u.id} 
-                        onClick={() => onUpdate({ ...task, assigneeId: u.id })} 
+                        onClick={() => handleFieldUpdate('assigneeId', u.id)} 
                         className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all hover:bg-white dark:hover:bg-[#1e293b] ${task.assigneeId === u.id ? 'bg-white dark:bg-[#1e293b] border-indigo-500 ring-1 ring-indigo-500 shadow-sm' : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'}`}
                     >
                         <Avatar src={u.avatar} alt={u.name} size="sm" />
@@ -400,7 +454,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                         <button key={u.id} onClick={() => {
                             const current = task.supportIds || [];
                             const next = current.includes(u.id) ? current.filter(id => id !== u.id) : [...current, u.id];
-                            onUpdate({ ...task, supportIds: next });
+                            handleFieldUpdate('supportIds', next, isSelected ? `Removeu ${u.name} do apoio` : `Adicionou ${u.name} ao apoio`);
                         }} className={`relative`}>
                              <Avatar src={u.avatar} alt={u.name} size="sm" className={`transition-all ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-[#021221]' : 'opacity-50 hover:opacity-100'}`} />
                              {isSelected && <div className="absolute -top-1 -right-1 bg-indigo-500 w-3 h-3 rounded-full border-2 border-white dark:border-[#021221]"></div>}
@@ -427,7 +481,8 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
           </div>
           <textarea
               value={task.description}
-              onChange={(e) => onUpdate({ ...task, description: e.target.value })}
+              onChange={(e) => onUpdate({...task, description: e.target.value})}
+              onBlur={(e) => handleFieldUpdate('description', e.target.value)}
               rows={5}
               className="w-full p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0f172a] text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-indigo-500 resize-none leading-relaxed shadow-sm"
               placeholder="Descreva os detalhes da tarefa, requisitos e contexto..."
@@ -459,7 +514,9 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                   <div className="col-span-3">Responsável</div>
               </div>
 
-              {task.subtasks.map(st => (
+              {task.subtasks.map(st => {
+                  const assignee = users.find(u => u.id === st.assigneeId);
+                  return (
                   <div key={st.id} className="grid grid-cols-12 gap-4 items-center group p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-[#2d3748] transition-colors border border-transparent hover:border-gray-100 dark:hover:border-gray-700">
                       <div className="col-span-1 flex justify-center">
                           <input 
@@ -473,7 +530,11 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                           <input 
                             type="text"
                             value={st.title}
-                            onChange={(e) => handleSubtaskChange(st.id, 'title', e.target.value)}
+                            onBlur={(e) => handleSubtaskChange(st.id, 'title', e.target.value)}
+                            onChange={(e) => {
+                                const updatedSubtasks = task.subtasks.map(s => s.id === st.id ? { ...s, title: e.target.value } : s);
+                                onUpdate({...task, subtasks: updatedSubtasks});
+                            }}
                             className={`w-full bg-transparent border-none focus:ring-0 p-0 text-sm font-medium transition-colors ${st.completed ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-200'}`}
                             placeholder="Nome da atividade"
                           />
@@ -501,20 +562,28 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                           )}
                       </div>
                       <div className="col-span-3 flex items-center gap-2">
-                          <select
-                             value={st.assigneeId || ''}
-                             onChange={(e) => handleSubtaskChange(st.id, 'assigneeId', e.target.value)}
-                             className="w-full text-xs bg-transparent border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-gray-600 dark:text-gray-400 focus:ring-1 focus:ring-indigo-500"
-                          >
-                             <option value="">Sem dono</option>
-                             {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                          </select>
-                          <button onClick={() => deleteSubtask(st.id)} className="text-gray-400 hover:text-red-500 p-1 rounded opacity-0 group-hover:opacity-100 transition-all ml-auto">
+                          <div className="relative w-full flex items-center gap-2">
+                              {assignee ? (
+                                  <Avatar src={assignee.avatar} alt={assignee.name} size="sm" className="w-6 h-6 flex-shrink-0" />
+                              ) : (
+                                  <div className="w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[10px] text-gray-500 flex-shrink-0">?</div>
+                              )}
+                              <select
+                                 value={st.assigneeId || ''}
+                                 onChange={(e) => handleSubtaskChange(st.id, 'assigneeId', e.target.value)}
+                                 className="w-full text-xs bg-transparent border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-gray-600 dark:text-gray-400 focus:ring-1 focus:ring-indigo-500"
+                              >
+                                 <option value="">Sem dono</option>
+                                 {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                              </select>
+                          </div>
+                          <button onClick={() => deleteSubtask(st.id, st.title)} className="text-gray-400 hover:text-red-500 p-1 rounded opacity-0 group-hover:opacity-100 transition-all ml-auto">
                               <Trash2 size={14} />
                           </button>
                       </div>
                   </div>
-              ))}
+                  );
+              })}
 
               <button 
                   onClick={addSubtask} 
@@ -560,7 +629,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                                 <span className="text-[10px] text-gray-400">{new Date(att.createdAt).toLocaleDateString()}</span>
                             </div>
                         </div>
-                        <button onClick={() => deleteAttachment(att.id)} className="text-gray-300 hover:text-red-500 p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                        <button onClick={() => deleteAttachment(att.id, att.name)} className="text-gray-300 hover:text-red-500 p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                             <X size={16} />
                         </button>
                     </div>
@@ -594,6 +663,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                        case 'cancelled': Icon = XCircle; color = "bg-red-100 text-red-600"; break;
                        case 'resumed': Icon = PlayCircle; color = "bg-blue-100 text-blue-600"; break;
                        case 'subtask_update': Icon = CheckSquare; color = "bg-purple-100 text-purple-600"; break;
+                       case 'info': Icon = Info; color = "bg-gray-200 text-gray-600"; break;
                    }
 
                    return (
@@ -604,7 +674,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                             <div className="flex-1 bg-gray-50 dark:bg-[#1b263b]/40 p-3 rounded-lg border border-gray-100 dark:border-gray-800">
                                 <div className="flex justify-between items-start mb-1">
                                     <span className="text-xs font-bold text-gray-700 dark:text-gray-200 capitalize">
-                                        {event.eventType === 'subtask_update' ? 'Atividade' : event.eventType === 'status_change' ? 'Mudança de Status' : event.eventType === 'created' ? 'Criado' : event.eventType === 'started' ? 'Iniciado' : event.eventType === 'completed' ? 'Finalizado' : event.eventType === 'paused' ? 'Pausado' : event.eventType === 'cancelled' ? 'Cancelado' : 'Retomado'}
+                                        {event.eventType === 'subtask_update' ? 'Atividade' : event.eventType === 'status_change' ? 'Mudança de Status' : event.eventType === 'created' ? 'Criado' : event.eventType === 'started' ? 'Iniciado' : event.eventType === 'completed' ? 'Finalizado' : event.eventType === 'paused' ? 'Pausado' : event.eventType === 'cancelled' ? 'Cancelado' : event.eventType === 'info' ? 'Atualização' : 'Retomado'}
                                     </span>
                                     <span className="text-[10px] text-gray-400">
                                         {new Date(event.createdAt).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'})}

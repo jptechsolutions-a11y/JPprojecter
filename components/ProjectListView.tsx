@@ -178,7 +178,7 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                                 </div>
                             </div>
 
-                            {/* Progress Column (NEW) */}
+                            {/* Progress Column */}
                             <div className="col-span-2 px-4 border-r border-gray-100 dark:border-gray-800 flex items-center justify-center h-full">
                                 <div className="w-full flex items-center gap-2">
                                     <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
@@ -231,34 +231,43 @@ export const ProjectListView: React.FC<ProjectListViewProps> = ({
                                     <div className="col-span-2 text-center">Prazo</div>
                                     <div className="col-span-2 text-center">Responsável</div>
                                 </div>
-                                {task.subtasks.map(sub => (
-                                    <div key={sub.id} className="grid grid-cols-12 py-2 px-4 items-center hover:bg-gray-100 dark:hover:bg-[#1b263b] transition-colors border-b border-gray-100 dark:border-gray-800/50 last:border-0">
-                                        <div className="col-span-6 pl-14 flex items-center gap-2">
-                                            <CornerDownRight size={12} className="text-gray-400" />
-                                            <span className={`text-sm text-gray-700 dark:text-gray-300 ${sub.completed ? 'line-through opacity-50' : ''}`}>{sub.title}</span>
-                                        </div>
-                                        <div className="col-span-2 flex justify-center">
-                                            {sub.completed ? (
-                                                <span className="flex items-center gap-1 text-[10px] text-green-600 bg-green-100 px-2 py-0.5 rounded font-bold">
-                                                    <CheckCircle2 size={10} /> Feito
-                                                </span>
-                                            ) : (
-                                                <span className="flex items-center gap-1 text-[10px] text-gray-500 bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded font-bold">
-                                                    Pendente
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="col-span-2 text-center text-xs text-gray-500 dark:text-gray-400">
-                                            {sub.dueDate ? new Date(sub.dueDate).toLocaleDateString() : '-'}
-                                        </div>
-                                        <div className="col-span-2 flex justify-center">
-                                            {/* Logic to show assignee avatar if supported in Subtask type, defaulting to task assignee or unassigned */}
-                                            <div className="w-5 h-5 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-[8px] text-white">
-                                                ?
+                                {task.subtasks.map(sub => {
+                                    const assignee = users.find(u => u.id === sub.assigneeId);
+                                    return (
+                                        <div key={sub.id} className="grid grid-cols-12 py-2 px-4 items-center hover:bg-gray-100 dark:hover:bg-[#1b263b] transition-colors border-b border-gray-100 dark:border-gray-800/50 last:border-0">
+                                            <div className="col-span-6 pl-14 flex items-center gap-2">
+                                                <CornerDownRight size={12} className="text-gray-400" />
+                                                <span className={`text-sm text-gray-700 dark:text-gray-300 ${sub.completed ? 'line-through opacity-50' : ''}`}>{sub.title}</span>
+                                            </div>
+                                            <div className="col-span-2 flex justify-center">
+                                                {sub.completed ? (
+                                                    <span className="flex items-center gap-1 text-[10px] text-green-600 bg-green-100 px-2 py-0.5 rounded font-bold">
+                                                        <CheckCircle2 size={10} /> Feito
+                                                    </span>
+                                                ) : (
+                                                    <span className="flex items-center gap-1 text-[10px] text-gray-500 bg-gray-200 dark:bg-gray-700 px-2 py-0.5 rounded font-bold">
+                                                        Pendente
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="col-span-2 text-center text-xs text-gray-500 dark:text-gray-400">
+                                                {sub.dueDate ? new Date(sub.dueDate).toLocaleDateString() : '-'}
+                                            </div>
+                                            <div className="col-span-2 flex justify-center">
+                                                {assignee ? (
+                                                    <div className="flex items-center gap-1" title={assignee.name}>
+                                                        <Avatar src={assignee.avatar} alt={assignee.name} size="sm" className="w-5 h-5 text-[8px]" />
+                                                        <span className="text-[10px] text-gray-600 dark:text-gray-400 truncate max-w-[60px] hidden sm:block">{assignee.name.split(' ')[0]}</span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="w-5 h-5 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-[8px] text-white" title="Sem dono">
+                                                        ?
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </React.Fragment>
