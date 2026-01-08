@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Task, User, Priority, Status, Subtask, Attachment, Comment, Column, ApprovalStatus, TaskTimelineEntry } from '../types';
-import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2, AlertTriangle, Layout, PlayCircle, CheckCircle2, PauseCircle, XCircle, Info, Image as ImageIcon, Eye, Download } from 'lucide-react';
+import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2, AlertTriangle, Layout, PlayCircle, CheckCircle2, PauseCircle, XCircle, Info, Image as ImageIcon, Eye, Download, Save } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { generateSubtasks, generateTaskDescription } from '../services/geminiService';
 import { api } from '../services/dataService';
@@ -21,6 +21,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
   const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
   const [isGeneratingSubs, setIsGeneratingSubs] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSavingDesc, setIsSavingDesc] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Status Change Logic
@@ -51,9 +52,9 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
 
   // --- GENERIC FIELD UPDATER WITH LOGGING ---
   const handleFieldUpdate = async (field: keyof Task, value: any, logMessage?: string) => {
-      // Don't update if value hasn't changed (shallow check)
-      if (task[field] === value) return;
-
+      // Allow re-selecting same value if it's toggle logic (supportIds handled in caller)
+      // For assignee, we want to allow deselecting (passing null) even if task[field] is undefined
+      
       const updatedTask = { ...task, [field]: value };
       
       // Calculate automated log message if not provided
@@ -65,8 +66,12 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
           else if (field === 'startDate') finalLogMessage = `Data de início alterada para ${new Date(value).toLocaleDateString()}`;
           else if (field === 'dueDate') finalLogMessage = `Data de entrega alterada para ${new Date(value).toLocaleDateString()}`;
           else if (field === 'assigneeId') {
-              const u = users.find(u => u.id === value);
-              finalLogMessage = `Responsável principal alterado para ${u ? u.name : 'Ninguém'}`;
+              if (value) {
+                const u = users.find(u => u.id === value);
+                finalLogMessage = `Responsável principal alterado para ${u ? u.name : 'Ninguém'}`;
+              } else {
+                finalLogMessage = `Responsável principal removido`;
+              }
           }
       }
 
@@ -91,6 +96,14 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
           };
           onUpdate({ ...updatedTask, timeline: task.timeline ? [...task.timeline, newEntry] : [newEntry] });
       }
+  };
+
+  // Handle Description Save
+  const handleSaveDescription = async () => {
+      setIsSavingDesc(true);
+      await handleFieldUpdate('description', task.description);
+      // Simulate network delay for UX if needed, or just finish
+      setTimeout(() => setIsSavingDesc(false), 500);
   };
 
   // Handle Status Change manually via dropdown
@@ -155,7 +168,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
   const handleAiDescription = async () => {
     setIsGeneratingDesc(true);
     const desc = await generateTaskDescription(task.title);
-    await handleFieldUpdate('description', desc, 'Descrição gerada por IA');
+    onUpdate({...task, description: desc});
     setIsGeneratingDesc(false);
   };
 
@@ -453,7 +466,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                 {users.map(u => (
                     <button 
                         key={u.id} 
-                        onClick={() => handleFieldUpdate('assigneeId', u.id)} 
+                        onClick={() => handleFieldUpdate('assigneeId', task.assigneeId === u.id ? null : u.id)} 
                         className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all hover:bg-white dark:hover:bg-[#1e293b] ${task.assigneeId === u.id ? 'bg-white dark:bg-[#1e293b] border-indigo-500 ring-1 ring-indigo-500 shadow-sm' : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'}`}
                     >
                         <Avatar src={u.avatar} alt={u.name} size="sm" />
@@ -492,18 +505,28 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
               <label className="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200">
                   <Layout size={16} /> Descrição
               </label>
-              <button 
-                  onClick={handleAiDescription} 
-                  disabled={isGeneratingDesc} 
-                  className="text-xs flex items-center gap-1 text-indigo-600 hover:text-indigo-800 bg-indigo-50 dark:bg-indigo-900/30 dark:text-indigo-300 px-3 py-1.5 rounded-full transition-colors font-medium border border-indigo-100 dark:border-indigo-800"
-              >
-                <Wand2 size={12} /> {isGeneratingDesc ? 'Gerando...' : 'Melhorar com IA'}
-              </button>
+              <div className="flex items-center gap-2">
+                  <button 
+                      onClick={handleAiDescription} 
+                      disabled={isGeneratingDesc} 
+                      className="text-xs flex items-center gap-1 text-indigo-600 hover:text-indigo-800 bg-indigo-50 dark:bg-indigo-900/30 dark:text-indigo-300 px-3 py-1.5 rounded-full transition-colors font-medium border border-indigo-100 dark:border-indigo-800"
+                  >
+                    <Wand2 size={12} /> {isGeneratingDesc ? 'Gerando...' : 'Melhorar com IA'}
+                  </button>
+                  <button 
+                      onClick={handleSaveDescription} 
+                      disabled={isSavingDesc} 
+                      className="text-xs flex items-center gap-1 text-white bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-full transition-colors font-bold shadow-sm"
+                  >
+                    {isSavingDesc ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Salvar Descrição
+                  </button>
+              </div>
           </div>
           <textarea
               value={task.description}
               onChange={(e) => onUpdate({...task, description: e.target.value})}
-              onBlur={(e) => handleFieldUpdate('description', e.target.value)}
+              // onBlur Removed to prevent auto-save conflict with manual save button logic if preferred, or keep it.
+              // We'll keep manual save as the primary action for description to follow user request.
               rows={5}
               className="w-full p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0f172a] text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-indigo-500 resize-none leading-relaxed shadow-sm"
               placeholder="Descreva os detalhes da tarefa, requisitos e contexto..."

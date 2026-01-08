@@ -391,6 +391,7 @@ export const api = {
     const dbUpdates: any = {
       group_id: task.groupId, title: task.title, description: task.description,
       status: task.status, priority: task.priority, assignee_id: task.assigneeId,
+      support_ids: task.supportIds, // Added support_ids here
       progress: task.progress, approval_status: task.approvalStatus, approver_id: task.approverId,
       start_date: task.startDate, due_date: task.dueDate,
       started_at: task.startedAt, completed_at: task.completedAt
