@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Task, User, Priority, Status, Subtask, Attachment, Comment, Column, ApprovalStatus, TaskTimelineEntry } from '../types';
-import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2, AlertTriangle, Layout, PlayCircle, CheckCircle2, PauseCircle, XCircle, Info, Image as ImageIcon, Eye } from 'lucide-react';
+import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2, AlertTriangle, Layout, PlayCircle, CheckCircle2, PauseCircle, XCircle, Info, Image as ImageIcon, Eye, Download } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { generateSubtasks, generateTaskDescription } from '../services/geminiService';
 import { api } from '../services/dataService';
@@ -355,6 +355,24 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
     }
   };
 
+  const downloadAttachment = async (url: string, filename: string) => {
+    try {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+        console.error('Download failed', error);
+        window.open(url, '_blank');
+    }
+  };
+
   return (
     <div className="space-y-8 animate-fade-in pb-4">
       
@@ -637,6 +655,9 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                                 <a href={att.url} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-indigo-500 p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700" title="Visualizar">
                                     <Eye size={14} />
                                 </a>
+                                <button onClick={() => downloadAttachment(att.url, att.name)} className="text-gray-400 hover:text-green-500 p-1.5 rounded hover:bg-green-50 dark:hover:bg-green-900/20" title="Baixar">
+                                    <Download size={14} />
+                                </button>
                                 <button onClick={() => deleteAttachment(att.id, att.name)} className="text-gray-400 hover:text-red-500 p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20" title="Excluir">
                                     <Trash2 size={14} />
                                 </button>
