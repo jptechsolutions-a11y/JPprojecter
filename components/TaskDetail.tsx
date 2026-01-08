@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Task, User, Priority, Status, Subtask, Attachment, Comment, Column, ApprovalStatus, TaskTimelineEntry } from '../types';
-import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2, AlertTriangle, Layout, PlayCircle, CheckCircle2, PauseCircle, XCircle, Info } from 'lucide-react';
+import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2, AlertTriangle, Layout, PlayCircle, CheckCircle2, PauseCircle, XCircle, Info, Image as ImageIcon, Eye } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { generateSubtasks, generateTaskDescription } from '../services/geminiService';
 import { api } from '../services/dataService';
@@ -340,11 +340,14 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
           const msg = `Arquivo anexado: ${file.name}`;
           await api.logTimelineEvent(task.id, 'info', undefined, undefined, msg);
           onUpdate({ ...task, attachments: [...task.attachments, newAttachment] });
+      } else {
+          alert('Erro no upload. Tente novamente após atualizar a página.');
       }
       setIsUploading(false);
   };
 
   const deleteAttachment = async (id: string, name: string) => {
+    if(!confirm("Excluir este anexo?")) return;
     const success = await api.deleteAttachment(id);
     if (success) {
         await api.logTimelineEvent(task.id, 'info', undefined, undefined, `Arquivo removido: ${name}`);
@@ -617,21 +620,44 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                     </div>
                 )}
                 {task.attachments.map(att => (
-                    <div key={att.id} className="flex items-center justify-between p-3 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm group hover:shadow-md transition-all">
-                        <div className="flex items-center gap-3 overflow-hidden">
-                            <div className="p-2.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-lg shrink-0">
-                                <FileText size={18} />
+                    <div key={att.id} className="flex flex-col p-3 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm group hover:shadow-md transition-all">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                                <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-lg shrink-0">
+                                    {att.type === 'image' ? <ImageIcon size={18} /> : <FileText size={18} />}
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                    <a href={att.url} target="_blank" rel="noreferrer" className="text-sm font-bold text-gray-700 dark:text-gray-200 hover:text-indigo-600 truncate block max-w-[150px]">
+                                        {att.name}
+                                    </a>
+                                    <span className="text-[10px] text-gray-400">{new Date(att.createdAt).toLocaleDateString()}</span>
+                                </div>
                             </div>
-                            <div className="flex flex-col min-w-0">
-                                <a href={att.url} target="_blank" rel="noreferrer" className="text-sm font-bold text-gray-700 dark:text-gray-200 hover:text-indigo-600 truncate block">
-                                    {att.name}
+                            <div className="flex gap-1">
+                                <a href={att.url} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-indigo-500 p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700" title="Visualizar">
+                                    <Eye size={14} />
                                 </a>
-                                <span className="text-[10px] text-gray-400">{new Date(att.createdAt).toLocaleDateString()}</span>
+                                <button onClick={() => deleteAttachment(att.id, att.name)} className="text-gray-400 hover:text-red-500 p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20" title="Excluir">
+                                    <Trash2 size={14} />
+                                </button>
                             </div>
                         </div>
-                        <button onClick={() => deleteAttachment(att.id, att.name)} className="text-gray-300 hover:text-red-500 p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-                            <X size={16} />
-                        </button>
+                        
+                        {/* Image Preview with Fallback */}
+                        {att.type === 'image' && (
+                            <div className="mt-3 relative w-full h-32 rounded-md overflow-hidden bg-gray-100 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 group/img">
+                                <img 
+                                    src={att.url} 
+                                    alt={att.name} 
+                                    className="w-full h-full object-cover transition-transform group-hover/img:scale-105" 
+                                    onError={(e) => {
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                        (e.target as HTMLImageElement).parentElement?.classList.add('flex', 'items-center', 'justify-center', 'text-gray-400', 'text-xs');
+                                        (e.target as HTMLImageElement).parentElement!.innerHTML = '<span class="flex flex-col items-center gap-1"><span class="text-red-400 font-bold">Erro ao carregar</span><span>Link quebrado ou privado</span></span>';
+                                    }}
+                                />
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>
