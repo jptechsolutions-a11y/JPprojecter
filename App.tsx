@@ -152,6 +152,7 @@ export default function App() {
   const [newTaskSubTitle, setNewTaskSubTitle] = useState('');
   const [newTaskSubDuration, setNewTaskSubDuration] = useState(1);
   const [newTaskSubAssignee, setNewTaskSubAssignee] = useState('');
+  const [newTaskAssignee, setNewTaskAssignee] = useState(''); // Estado para o Responsável da Tarefa Principal
   const [newTaskStartDate, setNewTaskStartDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null); 
@@ -296,6 +297,7 @@ export default function App() {
   const handleAddSubtaskToForm = () => {
       if (!newTaskSubTitle.trim()) return;
       
+      // Auto-calculate dates based on task start date
       const start = new Date(newTaskStartDate);
       const end = new Date(start);
       end.setDate(end.getDate() + newTaskSubDuration);
@@ -304,8 +306,8 @@ export default function App() {
           title: newTaskSubTitle,
           duration: newTaskSubDuration,
           assigneeId: newTaskSubAssignee || undefined,
-          startDate: newTaskStartDate,
-          dueDate: end.toISOString().split('T')[0]
+          startDate: newTaskStartDate, // Use Task Start Date
+          dueDate: end.toISOString().split('T')[0] // Calculated End Date
       };
 
       setNewTaskSubtasks([...newTaskSubtasks, sub]);
@@ -359,6 +361,7 @@ export default function App() {
       priority: 'Média',
       startDate: newTaskStartDate,
       dueDate: calculatedDueDate,
+      assigneeId: newTaskAssignee || undefined, // Set Assignee
       tags: [], subtasks: [] as any, progress: 0, attachments: [], comments: [],
       createdAt: new Date().toISOString(), teamId: currentTeamId || '',
       approvalStatus: 'none'
@@ -375,6 +378,7 @@ export default function App() {
         setNewTaskSubTitle('');
         setNewTaskSubDuration(1);
         setNewTaskSubAssignee('');
+        setNewTaskAssignee('');
         setNewTaskStartDate(new Date().toISOString().split('T')[0]);
         loadData();
     } else {
@@ -597,6 +601,18 @@ export default function App() {
                     {columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                 </select>
              </div>
+          </div>
+
+          <div>
+                <label className="block text-sm font-bold mb-1 dark:text-gray-300">Responsável pela Tarefa</label>
+                <select 
+                    value={newTaskAssignee}
+                    onChange={(e) => setNewTaskAssignee(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-[#1e293b] border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white outline-none"
+                >
+                    <option value="">Selecione um responsável...</option>
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
           </div>
 
           {/* Subtasks Section */}

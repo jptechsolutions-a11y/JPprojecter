@@ -221,8 +221,6 @@ export const api = {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id || null;
       
-      console.log(`[Timeline] Saving event: ${eventType} for task ${taskId}`);
-
       // TENTATIVA 1: Inserir com o ID do usuário logado
       let { error } = await supabase.from('task_timeline').insert({
           task_id: taskId,
@@ -233,9 +231,10 @@ export const api = {
           reason: reason
       });
       
-      // TENTATIVA 2: Fallback se falhar (ex: usuário deletado ou erro de FK)
+      // TENTATIVA 2: Fallback se falhar (ex: usuário deletado, erro de FK, ou RLS)
+      // Isso garante que o evento seja salvo como "Sistema" em vez de ser perdido
       if (error) {
-          console.warn(`[Timeline] Attempt 1 failed: ${error.message}. Retrying as Anonymous.`);
+          console.warn(`[Timeline] Erro ao salvar com usuário: ${error.message}. Tentando salvar como anônimo.`);
           const retryRes = await supabase.from('task_timeline').insert({
               task_id: taskId,
               user_id: null,
@@ -246,7 +245,7 @@ export const api = {
           });
           
           if (retryRes.error) {
-              console.error("[Timeline] FATAL: Could not save timeline event.", retryRes.error);
+              console.error("[Timeline] FATAL: Não foi possível salvar o evento na timeline.", retryRes.error);
           }
       }
       return true;
@@ -372,7 +371,7 @@ export const api = {
       description: task.description, 
       status: task.status, 
       priority: task.priority,
-      assignee_id: task.assigneeId, 
+      assignee_id: task.assigneeId, // Now correctly passing assignee
       start_date: task.startDate, 
       due_date: task.dueDate
     }).select().single();
@@ -381,7 +380,7 @@ export const api = {
         return { success: false, error: taskError };
     }
 
-    // Log creation in timeline
+    // Log creation in timeline immediately
     await api.logTimelineEvent(taskData.id, 'created', task.status);
 
     if (initialSubtasks.length > 0) {
