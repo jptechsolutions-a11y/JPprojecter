@@ -223,7 +223,9 @@ export const api = {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id;
       
-      const { error } = await supabase.from('task_timeline').insert({
+      // TENTATIVA 1: Inserir com o ID do usuário logado
+      // Isso pode falhar se o 'trigger' de criar profile falhou no passado (FK violation)
+      let { error } = await supabase.from('task_timeline').insert({
           task_id: taskId,
           user_id: userId,
           event_type: eventType,
@@ -232,8 +234,23 @@ export const api = {
           reason: reason
       });
       
+      // TENTATIVA 2: Fallback para usuário nulo (Sistema/Anônimo)
+      // Se o erro for FK violation (código 23503), tentamos salvar sem o user_id para não perder o evento
+      if (error && (error.code === '23503' || error.message?.includes('foreign key'))) {
+          console.warn("LogTimeline: Falha de FK no user_id. Salvando evento como anônimo.", error);
+          const retryRes = await supabase.from('task_timeline').insert({
+              task_id: taskId,
+              user_id: null,
+              event_type: eventType,
+              new_status: newStatus,
+              old_status: oldStatus,
+              reason: reason
+          });
+          error = retryRes.error;
+      }
+
       if (error) {
-          console.error("FATAL: Error logging timeline. Verifique se a tabela 'task_timeline' existe e tem permissões RLS.", error);
+          console.error("FATAL: Error logging timeline (Final attempt).", error);
       }
       return !error;
   },
