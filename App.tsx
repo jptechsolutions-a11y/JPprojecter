@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2, Calendar as CalendarIcon, Clock, Trash2, AlertCircle, AlertTriangle, X } from 'lucide-react';
+import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2, Calendar as CalendarIcon, Clock, Trash2, AlertCircle, AlertTriangle, X, Edit2, Check } from 'lucide-react';
 import { Avatar } from './components/Avatar';
 import { Modal } from './components/Modal';
 import { TaskDetail } from './components/TaskDetail';
@@ -168,6 +168,8 @@ export default function App() {
   // Kanban Customization State
   const [isAddingColumn, setIsAddingColumn] = useState(false);
   const [newColumnTitle, setNewColumnTitle] = useState('');
+  const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
+  const [editingColumnTitle, setEditingColumnTitle] = useState('');
 
   const [currentUser, setCurrentUser] = useState<User | null>(null); 
   const [hasTeams, setHasTeams] = useState<boolean>(true);
@@ -318,7 +320,6 @@ export default function App() {
   };
 
   const handleDeleteColumn = async (columnId: string, index: number) => {
-      // Prevent deleting the first column (default/inbox)
       if (index === 0) {
           alert("A primeira coluna é a lista padrão e não pode ser excluída.");
           return;
@@ -328,8 +329,22 @@ export default function App() {
       const success = await api.deleteColumn(columnId);
       if (success) {
           setColumns(columns.filter(c => c.id !== columnId));
-          // Reset tasks in this column to show up in default (handled by render logic implicitly)
       }
+  };
+
+  const startEditingColumn = (col: Column) => {
+      setEditingColumnId(col.id);
+      setEditingColumnTitle(col.title);
+  };
+
+  const handleUpdateColumn = async () => {
+      if (editingColumnId && editingColumnTitle.trim()) {
+          const success = await api.updateColumn(editingColumnId, editingColumnTitle);
+          if (success) {
+              setColumns(columns.map(c => c.id === editingColumnId ? { ...c, title: editingColumnTitle } : c));
+          }
+      }
+      setEditingColumnId(null);
   };
 
   // --- Task Creation Logic ---
@@ -337,7 +352,6 @@ export default function App() {
   const handleAddSubtaskToForm = () => {
       if (!newTaskSubTitle.trim()) return;
       
-      // Auto-calculate dates based on task start date
       const start = new Date(newTaskStartDate);
       const end = new Date(start);
       end.setDate(end.getDate() + newTaskSubDuration);
@@ -579,11 +593,10 @@ export default function App() {
                <div className="h-full overflow-x-auto overflow-y-hidden whitespace-nowrap p-4 bg-[#0079bf] dark:bg-[#021221] bg-opacity-10 dark:bg-opacity-100">
                  <div className="flex h-full gap-4 items-start">
                      {columns.map((column, index) => {
-                       // Logic change: Filter based on kanbanColumnId, OR if task is new (no columnId) and this is the first column
+                       // Filter based on kanbanColumnId. If it's the first column, also include tasks with no ID (fallback)
                        const columnTasks = filteredTasks.filter(t => {
                            if (t.kanbanColumnId) return t.kanbanColumnId === column.id;
-                           // Fallback logic for legacy/new tasks: if no column ID, put in first column
-                           return index === 0;
+                           return index === 0; // Default bucket for legacy tasks
                        });
 
                        return (
@@ -602,19 +615,37 @@ export default function App() {
                                 }
                             }}
                          >
-                           {/* Column Header */}
+                           {/* Column Header - Editable */}
                            <div className="p-3 font-bold text-gray-700 dark:text-gray-200 text-sm flex justify-between items-center handle cursor-grab active:cursor-grabbing border-b border-gray-200 dark:border-gray-600">
-                             <div className="flex items-center gap-2">
-                                <span className="truncate">{column.title}</span>
+                             <div className="flex items-center gap-2 flex-1 min-w-0">
+                                {editingColumnId === column.id ? (
+                                    <input 
+                                        autoFocus
+                                        value={editingColumnTitle}
+                                        onChange={(e) => setEditingColumnTitle(e.target.value)}
+                                        onBlur={handleUpdateColumn}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleUpdateColumn()}
+                                        className="w-full bg-white dark:bg-[#0f172a] border border-[#00b4d8] rounded px-1 text-sm outline-none"
+                                    />
+                                ) : (
+                                    <span 
+                                        className="truncate cursor-text hover:text-[#00b4d8] transition-colors"
+                                        onClick={() => startEditingColumn(column)}
+                                        title="Clique para editar"
+                                    >
+                                        {column.title}
+                                    </span>
+                                )}
                                 <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-1.5 py-0.5 rounded text-[10px]">{columnTasks.length}</span>
                              </div>
-                             {index !== 0 && ( // Prevent deleting the first column
-                                 <div className="flex items-center">
+                             
+                             <div className="flex items-center gap-1">
+                                 {index !== 0 && ( // Prevent deleting the first column
                                      <button onClick={() => handleDeleteColumn(column.id, index)} className="p-1 text-gray-400 hover:text-red-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors">
                                          <Trash2 size={12} />
                                      </button>
-                                 </div>
-                             )}
+                                 )}
+                             </div>
                            </div>
                            
                            {/* Cards Container */}

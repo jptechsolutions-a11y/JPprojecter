@@ -65,12 +65,9 @@ const mapTask = (t: any): Task => ({
 });
 
 // --- Constants ---
-// IDs textuais simples para garantir consistência e alinhamento com os novos status
+// Fallback apenas se o banco falhar totalmente
 const DEFAULT_COLUMNS = [
-  { id: 'afazer', title: 'A Fazer', color: 'bg-gray-100 dark:bg-gray-800' },
-  { id: 'progresso', title: 'Em Progresso', color: 'bg-blue-100 dark:bg-blue-900/30' },
-  { id: 'revisao', title: 'Em Revisão', color: 'bg-purple-100 dark:bg-purple-900/30' },
-  { id: 'concluido', title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30' }
+  { title: 'Backlog Geral', color: 'bg-gray-100 dark:bg-gray-800' }
 ];
 
 export const api = {
@@ -146,14 +143,11 @@ export const api = {
       if (columnsRes.data && columnsRes.data.length > 0) {
           mappedColumns = columnsRes.data.map((c:any) => ({ id: c.id, title: c.title, color: c.color }));
       } else {
-           // Se não tem colunas no banco, cria as padrão para evitar erro de FK
-           const { data: createdCols, error: createErr } = await supabase.from('columns').upsert(DEFAULT_COLUMNS, { onConflict: 'id' }).select();
+           // Se não tem colunas no banco, cria a padrão
+           const { data: createdCols, error: createErr } = await supabase.from('columns').insert(DEFAULT_COLUMNS).select();
            
            if (!createErr && createdCols) {
                mappedColumns = createdCols.map((c:any) => ({ id: c.id, title: c.title, color: c.color }));
-           } else {
-               // Fallback final memória
-               mappedColumns = DEFAULT_COLUMNS;
            }
       }
       
@@ -195,15 +189,21 @@ export const api = {
       } catch (e) {
           console.error("Erro ao criar coluna:", e);
       }
-      // Fallback local se o banco falhar
-      return { id: crypto.randomUUID(), title: title, color: randomColor };
+      return null;
+  },
+
+  updateColumn: async (columnId: string, title: string) => {
+      try {
+          const { error } = await supabase.from('columns').update({ title }).eq('id', columnId);
+          return !error;
+      } catch (e) { return false; }
   },
 
   deleteColumn: async (columnId: string) => {
       try {
           const { error } = await supabase.from('columns').delete().eq('id', columnId);
           return !error;
-      } catch (e) { return true; } // Otimista
+      } catch (e) { return true; } 
   },
 
   createTeamRole: async (teamId: string, name: string, level: number, color: string) => {
