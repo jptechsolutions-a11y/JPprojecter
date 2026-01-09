@@ -104,7 +104,7 @@ export interface Task {
   approvalStatus: ApprovalStatus;
   approverId?: string;
   timeline?: TaskTimelineEntry[];
-  color?: string; // Cor de fundo do card
+  color?: string; // Cor de fundo do cartão no Kanban
 }
 
 export interface Column {
