@@ -569,7 +569,7 @@ export default function App() {
            {/* ... Header content ... */}
            <div className="flex items-center gap-4">
                <h2 className="text-xl font-bold text-gray-800 dark:text-white whitespace-nowrap">
-                  Time de Planejamento
+                  JP Nexus
                </h2>
                <div className="hidden md:flex relative ml-4">
                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -697,7 +697,7 @@ export default function App() {
                                <button 
                                 onClick={() => { setIsNewTaskModalOpen(true); /* You might want to pre-select status here in a real app */ }}
                                 className="w-full py-1 flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10 rounded-md text-[10px] font-medium px-2 transition-colors"
-                               >
+                                >
                                    <Plus size={12} /> Adicionar cartão
                                </button>
                            </div>
