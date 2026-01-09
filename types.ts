@@ -110,6 +110,7 @@ export interface Column {
   id: string;
   title: string;
   color: string;
+  teamId?: string;
 }
 
 export interface RoutineTask {

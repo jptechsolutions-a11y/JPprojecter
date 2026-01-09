@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2, Calendar as CalendarIcon, Clock, Trash2, AlertCircle, AlertTriangle, X, Edit2, Check } from 'lucide-react';
+import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2, Calendar as CalendarIcon, Clock, Trash2, AlertCircle, AlertTriangle, X, Edit2, Check, Inbox } from 'lucide-react';
 import { Avatar } from './components/Avatar';
 import { Modal } from './components/Modal';
 import { TaskDetail } from './components/TaskDetail';
@@ -310,8 +310,9 @@ export default function App() {
 
   // --- Kanban Column Management ---
   const handleAddColumn = async () => {
-      if (!newColumnTitle.trim()) return;
-      const newCol = await api.createColumn(newColumnTitle.trim());
+      if (!newColumnTitle.trim() || !currentTeamId) return;
+      // Passa o teamId para criar a coluna vinculada ao time
+      const newCol = await api.createColumn(currentTeamId, newColumnTitle.trim());
       if (newCol) {
           setColumns([...columns, newCol]);
           setNewColumnTitle('');
@@ -321,7 +322,7 @@ export default function App() {
 
   const handleDeleteColumn = async (columnId: string, index: number) => {
       if (index === 0) {
-          alert("A primeira coluna é a lista padrão e não pode ser excluída.");
+          alert("A coluna 'Tarefas de Entrada' é padrão e não pode ser excluída.");
           return;
       }
       if (!confirm("Excluir esta lista? Tarefas nesta lista ficarão visíveis na primeira coluna.")) return;
@@ -347,7 +348,8 @@ export default function App() {
       setEditingColumnId(null);
   };
 
-  // --- Task Creation Logic ---
+  // ... Rest of the file logic ...
+  // Task Creation Logic, etc.
 
   const handleAddSubtaskToForm = () => {
       if (!newTaskSubTitle.trim()) return;
@@ -596,7 +598,7 @@ export default function App() {
                        // Filter based on kanbanColumnId. If it's the first column, also include tasks with no ID (fallback)
                        const columnTasks = filteredTasks.filter(t => {
                            if (t.kanbanColumnId) return t.kanbanColumnId === column.id;
-                           return index === 0; // Default bucket for legacy tasks
+                           return index === 0; // Default bucket for legacy tasks or default logic
                        });
 
                        return (
@@ -618,6 +620,7 @@ export default function App() {
                            {/* Column Header - Editable */}
                            <div className="p-3 font-bold text-gray-700 dark:text-gray-200 text-sm flex justify-between items-center handle cursor-grab active:cursor-grabbing border-b border-gray-200 dark:border-gray-600">
                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                {index === 0 && <Inbox size={14} className="text-[#00b4d8]" />}
                                 {editingColumnId === column.id ? (
                                     <input 
                                         autoFocus

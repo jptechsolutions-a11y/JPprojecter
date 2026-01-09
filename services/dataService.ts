@@ -65,10 +65,9 @@ const mapTask = (t: any): Task => ({
 });
 
 // --- Constants ---
-// UUIDs válidos fictícios para evitar erro de sintaxe UUID no Postgres
 const FALLBACK_COLUMNS = [
-  { id: '00000000-0000-0000-0000-000000000001', title: 'A Fazer', color: 'bg-gray-100 dark:bg-gray-800' },
-  { id: '00000000-0000-0000-0000-000000000002', title: 'Em Progresso', color: 'bg-blue-100 dark:bg-blue-900/30' },
+  { id: '00000000-0000-0000-0000-000000000001', title: 'Tarefas de Entrada', color: 'bg-gray-100 dark:bg-gray-800' },
+  { id: '00000000-0000-0000-0000-000000000002', title: 'Em Andamento', color: 'bg-blue-100 dark:bg-blue-900/30' },
   { id: '00000000-0000-0000-0000-000000000003', title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30' }
 ];
 
@@ -105,7 +104,7 @@ export const api = {
           teamId = userTeams[0].id;
       }
 
-      // Parallel fetching - Separated columns to catch errors gracefully
+      // Parallel fetching
       const [
           teamUsersRes,
           groupsRes,
@@ -122,32 +121,43 @@ export const api = {
           supabase.from('team_roles').select('*').eq('team_id', teamId)
       ]);
 
-      // Fetch Columns separately to handle missing column/table without crashing
+      // Fetch Columns SPECIFICALLY for this team
       let mappedColumns: Column[] = [];
       try {
-          // Attempt 1: Try with 'created_at' sort (preferred)
-          let { data: colsData, error: colsErr } = await supabase.from('columns').select('*').order('created_at', { ascending: true });
+          // Attempt 1: Try with 'created_at' sort
+          let { data: colsData, error: colsErr } = await supabase
+              .from('columns')
+              .select('*')
+              .eq('team_id', teamId)
+              .order('created_at', { ascending: true });
           
-          // Attempt 2: If 'created_at' does not exist (Error 400), try without sorting
-          if (colsErr && colsErr.code === '42703') { // 42703 is undefined_column in Postgres
-             console.warn("Columns sort failed (missing created_at), retrying without sort...");
-             const retry = await supabase.from('columns').select('*');
-             colsData = retry.data;
-             colsErr = retry.error;
-          } else if (colsErr) {
-             // Generic retry
-             const retry = await supabase.from('columns').select('*');
+          // Attempt 2: Retry without sort if created_at missing
+          if (colsErr && (colsErr.code === '42703' || colsErr.code === '400')) { 
+             const retry = await supabase.from('columns').select('*').eq('team_id', teamId);
              colsData = retry.data;
              colsErr = retry.error;
           }
 
-          if (colsErr) {
-              console.warn("Columns fetch failed completely:", colsErr.message);
-              mappedColumns = FALLBACK_COLUMNS;
-          } else if (colsData && colsData.length > 0) {
-              mappedColumns = colsData.map((c:any) => ({ id: c.id, title: c.title, color: c.color }));
+          if (colsData && colsData.length > 0) {
+              mappedColumns = colsData.map((c:any) => ({ id: c.id, title: c.title, color: c.color, teamId: c.team_id }));
+          } else if (!colsErr) {
+              // If no columns exist for this team (and no error), create defaults AUTOMATICALLY
+              console.log("No columns found for team, creating defaults...");
+              const defaultCols = [
+                  { title: 'Tarefas de Entrada', color: 'bg-gray-100 dark:bg-gray-800', team_id: teamId },
+                  { title: 'Em Andamento', color: 'bg-blue-100 dark:bg-blue-900/30', team_id: teamId },
+                  { title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30', team_id: teamId }
+              ];
+              
+              const { data: newCols } = await supabase.from('columns').insert(defaultCols).select();
+              if(newCols) {
+                  mappedColumns = newCols.map((c:any) => ({ id: c.id, title: c.title, color: c.color, teamId: c.team_id }));
+              } else {
+                  mappedColumns = FALLBACK_COLUMNS;
+              }
           } else {
-              // Table exists but is empty
+              // Error case
+              console.warn("Columns fetch error:", colsErr);
               mappedColumns = FALLBACK_COLUMNS;
           }
       } catch (e) {
@@ -195,23 +205,23 @@ export const api = {
     }
   },
 
-  // --- Column Management (Trello-like) ---
-  createColumn: async (title: string) => {
+  // --- Column Management (Team Scoped) ---
+  createColumn: async (teamId: string, title: string) => {
       const colors = ['bg-gray-100 dark:bg-gray-800', 'bg-blue-100 dark:bg-blue-900/30', 'bg-purple-100 dark:bg-purple-900/30', 'bg-green-100 dark:bg-green-900/30', 'bg-yellow-100 dark:bg-yellow-900/30', 'bg-red-100 dark:bg-red-900/30'];
       const randomColor = colors[Math.floor(Math.random() * colors.length)];
       
       try {
-          // Tenta criar. Se falhar (ex: created_at missing), o Supabase pode dar erro se não passar todas required.
-          // created_at tem default, então deve ir bem.
-          const { data, error } = await supabase.from('columns').insert({ title, color: randomColor }).select().single();
+          const { data, error } = await supabase.from('columns')
+            .insert({ title, color: randomColor, team_id: teamId })
+            .select().single();
+            
           if (data) {
-              return { id: data.id, title: data.title, color: data.color };
+              return { id: data.id, title: data.title, color: data.color, teamId: data.team_id };
           }
       } catch (e) {
           console.error("Erro ao criar coluna:", e);
       }
-      // Return a temp local object if DB fails so UI updates optimistically
-      return { id: crypto.randomUUID(), title: title, color: randomColor };
+      return { id: crypto.randomUUID(), title: title, color: randomColor, teamId };
   },
 
   updateColumn: async (columnId: string, title: string) => {
@@ -239,7 +249,6 @@ export const api = {
   },
 
   getTaskDetails: async (taskId: string) => {
-      // Fetch task details AND timeline
       const { data: taskData, error: taskError } = await supabase
           .from('tasks')
           .select('*, subtasks(*), attachments(*), comments(*)')
@@ -280,7 +289,6 @@ export const api = {
       const { data: { session } } = await supabase.auth.getSession();
       const userId = session?.user?.id || null;
       
-      // TENTATIVA 1: Inserir com o ID do usuário logado
       let { error } = await supabase.from('task_timeline').insert({
           task_id: taskId,
           user_id: userId,
@@ -290,11 +298,9 @@ export const api = {
           reason: reason
       });
       
-      // TENTATIVA 2: Fallback se falhar (ex: usuário deletado, erro de FK, ou RLS)
-      // Isso garante que o evento seja salvo como "Sistema" em vez de ser perdido
       if (error) {
-          console.warn(`[Timeline] Erro ao salvar com usuário: ${error.message}. Tentando salvar como anônimo.`);
-          const retryRes = await supabase.from('task_timeline').insert({
+          console.warn(`[Timeline] Fallback save: ${error.message}`);
+          await supabase.from('task_timeline').insert({
               task_id: taskId,
               user_id: null,
               event_type: eventType,
@@ -302,10 +308,6 @@ export const api = {
               old_status: oldStatus,
               reason: reason
           });
-          
-          if (retryRes.error) {
-              console.error("[Timeline] FATAL: Não foi possível salvar o evento na timeline.", retryRes.error);
-          }
       }
       return true;
   },
@@ -336,10 +338,19 @@ export const api = {
           
           await supabase.from('team_members').insert({ team_id: teamData.id, user_id: ownerId, role: 'Admin' });
           
+          // Create Default Groups
           const defaultGroups = [
               { title: 'Geral', color: '#00b4d8', team_id: teamData.id }
           ];
           await supabase.from('task_groups').insert(defaultGroups);
+
+          // Create Default Kanban Columns linked to this team
+          const defaultCols = [
+              { title: 'Tarefas de Entrada', color: 'bg-gray-100 dark:bg-gray-800', team_id: teamData.id },
+              { title: 'Em Andamento', color: 'bg-blue-100 dark:bg-blue-900/30', team_id: teamData.id },
+              { title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30', team_id: teamData.id }
+          ];
+          await supabase.from('columns').insert(defaultCols);
 
           const defaultRoles = [
               { team_id: teamData.id, name: 'Admin', level: 3, color: '#ef4444' },
@@ -488,7 +499,6 @@ export const api = {
     const { error } = await supabase.from('tasks').update(dbUpdates).eq('id', task.id);
     if (error) {
         console.error("Erro ao atualizar tarefa (Supabase):", error);
-        // Não alertar para não travar a UX se for algo menor, mas logar
     }
     return !error;
   },
