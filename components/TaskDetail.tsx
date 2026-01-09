@@ -121,6 +121,10 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, taskGroups,
                 finalLogMessage = `Responsável principal removido`;
               }
           }
+          else if (field === 'supportIds') {
+              // Only log if explicit message not provided, though supportIds changes are complex to log generically
+              // We'll handle logging in the JSX event handler or just skip detailed logging for this batch update
+          }
       }
 
       // Optimistic update
@@ -361,6 +365,8 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, taskGroups,
            logMsg = `Atividade "${subtask.title}" atribuída para: ${u ? u.name : 'Ninguém'}`;
       } else if (field === 'dueDate') {
            logMsg = `Prazo da atividade "${subtask.title}" alterado para ${new Date(value).toLocaleDateString()}`;
+      } else if (field === 'startDate') {
+           logMsg = `Início da atividade "${subtask.title}" alterado para ${new Date(value).toLocaleDateString()}`;
       }
 
       onUpdate({ ...task, subtasks: updatedSubtasks });
@@ -527,35 +533,80 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, taskGroups,
               <div>
                   <div className="flex items-center justify-between mb-2 bg-gray-50 dark:bg-[#1b263b] p-2 rounded-lg border border-gray-200 dark:border-gray-700">
                        <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                           <CheckSquare size={14} /> Checklist
+                           <CheckSquare size={14} /> Checklist ({task.subtasks.filter(s=>s.completed).length}/{task.subtasks.length})
                        </label>
                        <button onClick={handleAiSubtasks} disabled={isGeneratingSubs} className="text-[10px] text-purple-600 hover:bg-purple-100 px-2 py-1 rounded transition-colors flex items-center gap-1">
                            <Wand2 size={10} /> Sugerir
                        </button>
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                       {task.subtasks.map(st => (
-                          <div key={st.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 dark:hover:bg-[#1e293b] rounded group transition-colors">
-                              <input 
-                                type="checkbox" 
-                                checked={st.completed} 
-                                onChange={() => toggleSubtask(st.id)} 
-                                className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                              />
-                              <input 
-                                className={`flex-1 bg-transparent border-none p-0 text-sm focus:ring-0 ${st.completed ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-200'}`}
-                                value={st.title}
-                                onChange={(e) => handleSubtaskChange(st.id, 'title', e.target.value)}
-                              />
-                              <input 
-                                type="date"
-                                value={st.dueDate ? st.dueDate.split('T')[0] : ''}
-                                onChange={(e) => handleSubtaskChange(st.id, 'dueDate', e.target.value)}
-                                className="w-24 text-[10px] bg-transparent text-gray-400 focus:text-gray-800 border-none p-0 text-right focus:ring-0"
-                              />
-                              <button onClick={() => deleteSubtask(st.id, st.title)} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <Trash2 size={12} />
-                              </button>
+                          <div key={st.id} className="flex flex-col gap-2 p-3 bg-white dark:bg-[#1e293b] border border-gray-100 dark:border-gray-700 rounded-lg group transition-all hover:shadow-sm">
+                              {/* Top Line: Check, Title, Delete */}
+                              <div className="flex items-center gap-3">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={st.completed} 
+                                    onChange={() => toggleSubtask(st.id)} 
+                                    className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                  />
+                                  <input 
+                                    className={`flex-1 bg-transparent border-none p-0 text-sm focus:ring-0 ${st.completed ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-200'}`}
+                                    value={st.title}
+                                    onChange={(e) => handleSubtaskChange(st.id, 'title', e.target.value)}
+                                    placeholder="Nome da atividade"
+                                  />
+                                  <button onClick={() => deleteSubtask(st.id, st.title)} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <Trash2 size={12} />
+                                  </button>
+                              </div>
+                              
+                              {/* Bottom Line: Assignee, Start Date, Due Date */}
+                              <div className="flex flex-wrap items-center gap-2 pl-7">
+                                  {/* Assignee Selector */}
+                                  <div className="relative group/assignee">
+                                       <div className="flex items-center gap-1 cursor-pointer bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded-full border border-gray-200 dark:border-gray-700 hover:border-indigo-300">
+                                           {st.assigneeId ? (
+                                               <Avatar src={users.find(u => u.id === st.assigneeId)?.avatar} alt="User" size="sm" className="w-4 h-4 text-[8px]" />
+                                           ) : (
+                                               <UserIcon size={10} className="text-gray-400" />
+                                           )}
+                                           <span className="text-[10px] text-gray-500 dark:text-gray-400 max-w-[60px] truncate">
+                                              {st.assigneeId ? users.find(u => u.id === st.assigneeId)?.name.split(' ')[0] : 'Responsável'}
+                                           </span>
+                                       </div>
+                                       <select 
+                                          value={st.assigneeId || ''} 
+                                          onChange={(e) => handleSubtaskChange(st.id, 'assigneeId', e.target.value)}
+                                          className="absolute inset-0 opacity-0 cursor-pointer"
+                                       >
+                                          <option value="">Sem dono</option>
+                                          {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                       </select>
+                                  </div>
+
+                                  {/* Start Date */}
+                                  <div className="flex items-center gap-1 bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700">
+                                      <span className="text-[8px] text-gray-400 uppercase font-bold">INÍCIO</span>
+                                      <input 
+                                        type="date"
+                                        value={st.startDate ? st.startDate.split('T')[0] : ''}
+                                        onChange={(e) => handleSubtaskChange(st.id, 'startDate', e.target.value)}
+                                        className="w-20 text-[10px] bg-transparent text-gray-600 dark:text-gray-300 border-none p-0 focus:ring-0 cursor-pointer"
+                                      />
+                                  </div>
+
+                                  {/* Due Date */}
+                                  <div className="flex items-center gap-1 bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700">
+                                      <span className="text-[8px] text-gray-400 uppercase font-bold">FIM</span>
+                                      <input 
+                                        type="date"
+                                        value={st.dueDate ? st.dueDate.split('T')[0] : ''}
+                                        onChange={(e) => handleSubtaskChange(st.id, 'dueDate', e.target.value)}
+                                        className="w-20 text-[10px] bg-transparent text-gray-600 dark:text-gray-300 border-none p-0 focus:ring-0 cursor-pointer"
+                                      />
+                                  </div>
+                              </div>
                           </div>
                       ))}
                       <button onClick={addSubtask} className="flex items-center gap-2 text-xs text-gray-400 hover:text-indigo-500 mt-2 pl-2 transition-colors">
@@ -577,12 +628,18 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, taskGroups,
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {task.attachments.map(att => (
-                          <div key={att.id} className="relative group border border-gray-200 dark:border-gray-700 rounded-lg p-2 flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-[#1e293b] transition-colors">
-                              <div className="p-1.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500">
-                                  {att.type === 'image' ? <ImageIcon size={14} /> : <FileText size={14} />}
-                              </div>
+                          <div key={att.id} className="relative group border border-gray-200 dark:border-gray-700 rounded-lg p-2 flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-[#1e293b] transition-colors overflow-hidden">
+                              {att.type === 'image' ? (
+                                  <div className="w-10 h-10 flex-shrink-0 bg-gray-100 rounded overflow-hidden">
+                                      <img src={att.url} alt={att.name} className="w-full h-full object-cover" />
+                                  </div>
+                              ) : (
+                                  <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded text-gray-500">
+                                      <FileText size={16} />
+                                  </div>
+                              )}
                               <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-medium truncate">{att.name}</p>
+                                  <p className="text-xs font-medium truncate" title={att.name}>{att.name}</p>
                                   <div className="flex gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                       <button onClick={() => downloadAttachment(att.url, att.name)} className="text-[10px] text-blue-500 hover:underline">Baixar</button>
                                       <button onClick={() => deleteAttachment(att.id, att.name)} className="text-[10px] text-red-500 hover:underline">Excluir</button>
@@ -655,7 +712,7 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, taskGroups,
 
               {/* Assignees */}
               <div>
-                  <label className="text-[10px] font-bold text-gray-400 uppercase mb-2 block">Responsável</label>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase mb-2 block">Responsável Principal</label>
                   <div className="flex flex-wrap gap-2">
                       {users.map(u => (
                           <button 
@@ -666,6 +723,29 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, taskGroups,
                           >
                               <Avatar src={u.avatar} alt={u.name} size="md" />
                               {task.assigneeId === u.id && <div className="absolute -bottom-1 -right-1 bg-indigo-500 rounded-full p-0.5 border border-white"><Check size={8} className="text-white"/></div>}
+                          </button>
+                      ))}
+                  </div>
+              </div>
+
+              {/* Support Team */}
+              <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase mb-2 block">Equipe de Apoio</label>
+                  <div className="flex flex-wrap gap-2">
+                      {users.map(u => (
+                          <button 
+                              key={u.id} 
+                              onClick={() => {
+                                  const currentSupport = task.supportIds || [];
+                                  const newSupport = currentSupport.includes(u.id) 
+                                      ? currentSupport.filter(id => id !== u.id)
+                                      : [...currentSupport, u.id];
+                                  handleFieldUpdate('supportIds', newSupport);
+                              }}
+                              className={`relative w-7 h-7 rounded-full transition-all ${task.supportIds?.includes(u.id) ? 'ring-2 ring-purple-400 ring-offset-1 dark:ring-offset-[#1b263b] opacity-100' : 'opacity-40 hover:opacity-100 grayscale hover:grayscale-0'}`}
+                              title={u.name}
+                          >
+                              <Avatar src={u.avatar} alt={u.name} size="md" />
                           </button>
                       ))}
                   </div>
