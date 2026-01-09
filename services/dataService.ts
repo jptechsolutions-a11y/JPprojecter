@@ -225,9 +225,9 @@ export const api = {
       return { id: crypto.randomUUID(), title: title, color: randomColor, teamId };
   },
 
-  updateColumn: async (columnId: string, title: string) => {
+  updateColumn: async (columnId: string, updates: { title?: string, color?: string }) => {
       try {
-          const { error } = await supabase.from('columns').update({ title }).eq('id', columnId);
+          const { error } = await supabase.from('columns').update(updates).eq('id', columnId);
           return !error;
       } catch (e) { return false; }
   },

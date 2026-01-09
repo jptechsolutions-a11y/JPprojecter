@@ -31,148 +31,66 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, collapsed }: any) => 
   </button>
 );
 
-const TaskCard: React.FC<{ task: Task; allUsers: User[]; onClick: () => void; onDragStart: (e: React.DragEvent, task: Task) => void; onUpdate: (task: Task) => void; }> = ({ task, allUsers, onClick, onDragStart, onUpdate }) => {
-  const [showColorPicker, setShowColorPicker] = useState(false);
-
-  // Updated compact logic
+// Updated Compact Task Card
+const TaskCard: React.FC<{ task: Task; allUsers: User[]; onClick: () => void; onDragStart: (e: React.DragEvent, task: Task) => void }> = ({ task, allUsers, onClick, onDragStart }) => {
   const priorityColors = {
-    'Baixa': 'bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-200 border-teal-200 dark:border-teal-800',
-    'Média': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-200 border-yellow-200 dark:border-yellow-800',
-    'Alta': 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-200 border-red-200 dark:border-red-800',
+    'Baixa': 'bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300 border-teal-200 dark:border-teal-800',
+    'Média': 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800',
+    'Alta': 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300 border-red-200 dark:border-red-800',
   };
-
-  const statusColors: Record<string, string> = {
-      'A Fazer': 'bg-gray-100 text-gray-700 border-gray-200',
-      'Em Progresso': 'bg-blue-100 text-blue-700 border-blue-200',
-      'Em Pausa': 'bg-orange-100 text-orange-700 border-orange-200',
-      'Em Revisão': 'bg-purple-100 text-purple-700 border-purple-200',
-      'Concluído': 'bg-green-100 text-green-700 border-green-200',
-      'Cancelado': 'bg-red-100 text-red-700 border-red-200',
-  };
-
-  // Card Background Color Options
-  const cardColors = [
-      { id: 'default', bg: 'bg-white dark:bg-[#1e293b]', text: 'text-gray-800 dark:text-gray-100' },
-      { id: 'blue', bg: 'bg-blue-600', text: 'text-white' },
-      { id: 'green', bg: 'bg-green-600', text: 'text-white' },
-      { id: 'red', bg: 'bg-red-600', text: 'text-white' },
-      { id: 'yellow', bg: 'bg-yellow-500', text: 'text-white' },
-      { id: 'purple', bg: 'bg-purple-600', text: 'text-white' },
-      { id: 'orange', bg: 'bg-orange-500', text: 'text-white' },
-      { id: 'gray', bg: 'bg-gray-600', text: 'text-white' },
-  ];
-
-  const selectedColor = cardColors.find(c => c.id === task.color) || cardColors[0];
-  const isColored = selectedColor.id !== 'default';
 
   const completedSubtasks = task.subtasks.filter(s => s.completed).length;
 
-  const getDeadlineStatus = () => {
-      if (!task.dueDate || task.status === 'Concluído') return null;
-      const due = new Date(task.dueDate);
-      due.setHours(0,0,0,0);
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      
-      const diffTime = due.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      if (diffDays < 0) return { label: 'Atrasado', color: 'bg-red-100 text-red-600', icon: AlertTriangle };
-      if (diffDays === 0) return { label: 'Hoje', color: 'bg-orange-100 text-orange-600', icon: Clock };
-      if (diffDays <= 2) return { label: 'Próximo', color: 'bg-yellow-100 text-yellow-600', icon: AlertCircle };
-      return null;
-  };
-  
-  const deadline = getDeadlineStatus();
-
-  // Get all unique users involved (Assignee + Support)
+  // Responsibles
   const assignee = allUsers.find(u => u.id === task.assigneeId);
   const supportUsers = allUsers.filter(u => task.supportIds?.includes(u.id));
   const responsibles = Array.from(new Set([assignee, ...supportUsers].filter(Boolean))) as User[];
-
-  const handleColorChange = (e: React.MouseEvent, colorId: string) => {
-      e.stopPropagation();
-      onUpdate({ ...task, color: colorId });
-      setShowColorPicker(false);
-  };
 
   return (
     <div 
       draggable
       onDragStart={(e) => onDragStart(e, task)}
       onClick={onClick}
-      onMouseEnter={() => setShowColorPicker(true)}
-      onMouseLeave={() => setShowColorPicker(false)}
-      className={`${selectedColor.bg} p-2.5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group relative overflow-hidden`}
+      className="bg-white dark:bg-[#1e293b] p-2 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group relative overflow-hidden"
     >
-      {/* Color Picker Popover */}
-      {showColorPicker && (
-          <div className="absolute top-1 right-1 z-20 flex gap-1 bg-white dark:bg-[#0f172a] p-1 rounded shadow-lg border border-gray-200 dark:border-gray-600 animate-fade-in">
-              {cardColors.map(c => (
-                  <button 
-                    key={c.id} 
-                    onClick={(e) => handleColorChange(e, c.id)}
-                    className={`w-3 h-3 rounded-full ${c.bg === 'bg-white dark:bg-[#1e293b]' ? 'bg-gray-200' : c.bg} hover:scale-125 transition-transform border border-gray-300 dark:border-gray-600`}
-                    title={c.id}
-                  />
-              ))}
-          </div>
+      {/* Tiny Labels Row */}
+      <div className="flex gap-1 mb-1.5 flex-wrap">
+          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${priorityColors[task.priority]}`}>
+            {task.priority}
+          </span>
+          {task.dueDate && (
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border flex items-center gap-1 ${new Date(task.dueDate) < new Date() && task.status !== 'Concluído' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-gray-50 text-gray-500 border-gray-200 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300'}`}>
+                  <Clock size={8} /> {new Date(task.dueDate).toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'})}
+              </span>
+          )}
+      </div>
+      
+      <h3 className="text-gray-800 dark:text-gray-100 font-medium mb-1.5 leading-snug text-xs line-clamp-3">
+        {task.title}
+      </h3>
+      
+      {/* Thin Progress Bar */}
+      {task.subtasks.length > 0 && (
+        <div className="w-full bg-gray-100 dark:bg-gray-700 h-1 rounded-full mb-1.5 overflow-hidden">
+            <div 
+                className={`h-full rounded-full transition-all duration-500 ${task.progress === 100 ? 'bg-green-500' : 'bg-blue-500'}`} 
+                style={{ width: `${task.progress}%` }}
+            ></div>
+        </div>
       )}
 
-      {/* Header Info */}
-      <div className="flex justify-between items-start mb-1.5">
-        {/* Only show priority badge if not colored background to reduce noise */}
-        {!isColored && (
-            <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full border ${priorityColors[task.priority]}`}>
-            {task.priority}
-            </span>
-        )}
-        {isColored && <div className="h-4"></div>} {/* Spacer */}
-        
+      <div className="flex items-center justify-between mt-1">
         <div className="flex -space-x-1.5 overflow-hidden pl-1">
             {responsibles.slice(0, 3).map(u => (
                 <Avatar key={u.id} src={u.avatar} alt={u.name} size="sm" className="inline-block ring-1 ring-white dark:ring-[#1e293b] w-4 h-4 text-[8px]" />
             ))}
         </div>
-      </div>
-      
-      <h3 className={`${selectedColor.text} font-semibold mb-1.5 leading-snug text-xs line-clamp-3`}>
-        {task.title}
-      </h3>
-      
-      <div className="flex flex-wrap gap-1 mb-1.5">
-          {deadline && (
-              <div className={`flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded w-fit ${deadline.color}`}>
-                  <deadline.icon size={10} /> {deadline.label}
-              </div>
-          )}
-          {/* Mostra o Status real da tarefa, pois a coluna é só visual */}
-          {!isColored && (
-            <div className={`text-[9px] font-bold px-1.5 py-0.5 rounded border w-fit ${statusColors[task.status] || 'bg-gray-100 border-gray-200'}`}>
-                {task.status}
-            </div>
-          )}
-      </div>
-      
-      {/* Progress Bar Compact */}
-      <div className="w-full bg-gray-200/50 dark:bg-gray-700/50 h-1 rounded-full mt-1 mb-1.5 overflow-hidden">
-        <div 
-            className={`h-full rounded-full transition-all duration-500 ${isColored ? 'bg-white/80' : (task.progress === 100 ? 'bg-teal-500' : 'bg-[#00b4d8]')}`} 
-            style={{ width: `${task.progress}%` }}
-        ></div>
-      </div>
-
-      <div className={`flex items-center justify-between ${isColored ? 'text-white/80' : 'text-gray-400 dark:text-gray-500'} text-[10px]`}>
-        <div className="flex items-center gap-2">
-           {task.subtasks.length > 0 && (
-             <span className="flex items-center gap-1" title="Checklist">
-               <span className={completedSubtasks === task.subtasks.length ? (isColored ? 'font-bold' : 'text-teal-500') : ''}>
-                 {completedSubtasks}/{task.subtasks.length}
-               </span>
+        
+        {task.subtasks.length > 0 && (
+             <span className={`text-[9px] font-medium flex items-center gap-1 ${completedSubtasks === task.subtasks.length ? 'text-green-600' : 'text-gray-400'}`}>
+               <Check size={10} /> {completedSubtasks}/{task.subtasks.length}
              </span>
-           )}
-           {task.dueDate && <span>{new Date(task.dueDate).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'})}</span>}
-        </div>
+        )}
       </div>
     </div>
   );
@@ -219,6 +137,9 @@ export default function App() {
   const [newColumnTitle, setNewColumnTitle] = useState('');
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [editingColumnTitle, setEditingColumnTitle] = useState('');
+  
+  // Column Color Picker State
+  const [activeColorMenuColumnId, setActiveColorMenuColumnId] = useState<string | null>(null);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null); 
   const [hasTeams, setHasTeams] = useState<boolean>(true);
@@ -226,6 +147,7 @@ export default function App() {
   const currentTeam = teams.find(t => t.id === currentTeamId) || (teams.length > 0 ? teams[0] : null);
   const currentGroups = taskGroups.filter(g => g.teamId === currentTeamId);
 
+  // ... (Authentication logic remains the same) ...
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setIsAuthenticated(!!session);
@@ -307,6 +229,7 @@ export default function App() {
     loadData();
   }, [loadData]); 
 
+  // ... (Other handlers: Logout, DarkMode, filteredTasks) ...
   const handleLogout = async () => {
       await supabase.auth.signOut();
       setIsAuthenticated(false);
@@ -360,7 +283,6 @@ export default function App() {
   // --- Kanban Column Management ---
   const handleAddColumn = async () => {
       if (!newColumnTitle.trim() || !currentTeamId) return;
-      // Passa o teamId para criar a coluna vinculada ao time
       const newCol = await api.createColumn(currentTeamId, newColumnTitle.trim());
       if (newCol) {
           setColumns([...columns, newCol]);
@@ -389,7 +311,7 @@ export default function App() {
 
   const handleUpdateColumn = async () => {
       if (editingColumnId && editingColumnTitle.trim()) {
-          const success = await api.updateColumn(editingColumnId, editingColumnTitle);
+          const success = await api.updateColumn(editingColumnId, { title: editingColumnTitle });
           if (success) {
               setColumns(columns.map(c => c.id === editingColumnId ? { ...c, title: editingColumnTitle } : c));
           }
@@ -397,28 +319,26 @@ export default function App() {
       setEditingColumnId(null);
   };
 
-  // ... Rest of the file logic ...
-  // Task Creation Logic, etc.
+  const handleUpdateColumnColor = async (columnId: string, colorClass: string) => {
+      const success = await api.updateColumn(columnId, { color: colorClass });
+      if (success) {
+          setColumns(columns.map(c => c.id === columnId ? { ...c, color: colorClass } : c));
+          setActiveColorMenuColumnId(null);
+      }
+  };
 
+  // ... (Task Creation Handlers, Project Handlers - kept same) ...
   const handleAddSubtaskToForm = () => {
       if (!newTaskSubTitle.trim()) return;
-      
       const start = new Date(newTaskStartDate);
       const end = new Date(start);
       end.setDate(end.getDate() + newTaskSubDuration);
-
       const sub: Partial<Subtask> = {
-          title: newTaskSubTitle,
-          duration: newTaskSubDuration,
-          assigneeId: newTaskSubAssignee || undefined,
-          startDate: newTaskStartDate, // Use Task Start Date
-          dueDate: end.toISOString().split('T')[0] // Calculated End Date
+          title: newTaskSubTitle, duration: newTaskSubDuration, assigneeId: newTaskSubAssignee || undefined,
+          startDate: newTaskStartDate, dueDate: end.toISOString().split('T')[0]
       };
-
       setNewTaskSubtasks([...newTaskSubtasks, sub]);
-      setNewTaskSubTitle('');
-      setNewTaskSubDuration(1);
-      setNewTaskSubAssignee('');
+      setNewTaskSubTitle(''); setNewTaskSubDuration(1); setNewTaskSubAssignee('');
   };
 
   const handleRemoveSubtaskFromForm = (index: number) => {
@@ -429,7 +349,6 @@ export default function App() {
       if (!newTaskStartDate) return '';
       const totalDays = newTaskSubtasks.reduce((acc, curr) => acc + (curr.duration || 0), 0);
       if (totalDays === 0) return newTaskStartDate;
-      
       const start = new Date(newTaskStartDate);
       const end = new Date(start);
       end.setDate(end.getDate() + totalDays);
@@ -440,60 +359,37 @@ export default function App() {
     e.preventDefault();
     if(isCreatingTask) return;
     setIsCreatingTask(true);
-
     const formData = new FormData(e.currentTarget);
     const title = formData.get('title') as string;
     const status = formData.get('status') as Status; 
     const groupId = formData.get('groupId') as string;
-    
     const actualGroupId = groupId || (currentGroups.length > 0 ? currentGroups[0].id : '');
     
     if (!actualGroupId && currentGroups.length === 0) {
         alert("Crie um projeto antes de criar tarefas!");
-        setIsCreatingTask(false);
-        return;
+        setIsCreatingTask(false); return;
     }
-
     const calculatedDueDate = calculateEndDate();
-    
-    // Default Kanban Column is the first one available
     const defaultKanbanColumnId = columns.length > 0 ? columns[0].id : undefined;
-
     const tempId = crypto.randomUUID();
     const newTask: Task = {
-      id: tempId, // Temporary ID
-      groupId: actualGroupId, 
-      title, 
-      status: status || 'A Fazer', 
-      kanbanColumnId: defaultKanbanColumnId, // Set Default Column
-      description: '', 
-      priority: 'Média',
-      startDate: newTaskStartDate,
-      dueDate: calculatedDueDate,
-      assigneeId: newTaskAssignee || undefined, // Set Assignee
-      tags: [], subtasks: [] as any, progress: 0, attachments: [], comments: [],
-      createdAt: new Date().toISOString(), teamId: currentTeamId || '',
-      approvalStatus: 'none',
-      color: 'default' // Default color
+      id: tempId, groupId: actualGroupId, title, status: status || 'A Fazer', 
+      kanbanColumnId: defaultKanbanColumnId, description: '', priority: 'Média',
+      startDate: newTaskStartDate, dueDate: calculatedDueDate,
+      assigneeId: newTaskAssignee || undefined, tags: [], subtasks: [] as any, progress: 0, attachments: [], comments: [],
+      createdAt: new Date().toISOString(), teamId: currentTeamId || '', approvalStatus: 'none',
+      color: 'default'
     };
     
-    // Create task WITH subtasks
     const result = await api.createTask(newTask, newTaskSubtasks);
-    
     if(result.success && result.data) {
         setTasks([...tasks, result.data]);
         setIsNewTaskModalOpen(false);
-        // Reset Form
-        setNewTaskSubtasks([]);
-        setNewTaskSubTitle('');
-        setNewTaskSubDuration(1);
-        setNewTaskSubAssignee('');
-        setNewTaskAssignee('');
+        setNewTaskSubtasks([]); setNewTaskSubTitle(''); setNewTaskSubDuration(1); setNewTaskSubAssignee(''); setNewTaskAssignee('');
         setNewTaskStartDate(new Date().toISOString().split('T')[0]);
         loadData();
     } else {
         alert("Erro ao criar tarefa.");
-        console.error(result.error);
     }
     setIsCreatingTask(false);
   };
@@ -504,7 +400,6 @@ export default function App() {
       const formData = new FormData(e.currentTarget);
       const title = formData.get('title') as string;
       const color = formData.get('color') as string;
-
       const newGroup = await api.createTaskGroup(currentTeamId, title, color);
       if(newGroup) {
           setTaskGroups([...taskGroups, {id: newGroup.id, title: newGroup.title, color: newGroup.color, teamId: newGroup.teamId}]);
@@ -522,7 +417,7 @@ export default function App() {
   };
 
   const handleDeleteTeam = async (teamId: string) => {
-      if (!confirm("ATENÇÃO: Você tem certeza que deseja excluir este time?\n\nIsso apagará permanentemente:\n- Todos os projetos\n- Todas as tarefas\n\nEssa ação não pode ser desfeita.")) return;
+      if (!confirm("ATENÇÃO: Você tem certeza que deseja excluir este time?")) return;
       setIsLoadingData(true);
       const success = await api.deleteTeam(teamId);
       if (success) {
@@ -530,7 +425,7 @@ export default function App() {
           setCurrentTeamId(null);
           await loadData();
       } else {
-          alert("Erro ao excluir o time. Verifique se você é o dono (Admin).");
+          alert("Erro ao excluir o time.");
           setIsLoadingData(false);
       }
   };
@@ -543,10 +438,20 @@ export default function App() {
     return currentUser ? <TeamOnboarding currentUser={currentUser} onComplete={loadData} /> : null;
   }
 
+  // Define allowed List Colors
+  const listColors = [
+      { id: 'gray', class: 'bg-gray-100 dark:bg-gray-800' },
+      { id: 'blue', class: 'bg-blue-100 dark:bg-blue-900/30' },
+      { id: 'green', class: 'bg-green-100 dark:bg-green-900/30' },
+      { id: 'yellow', class: 'bg-yellow-100 dark:bg-yellow-900/30' },
+      { id: 'red', class: 'bg-red-100 dark:bg-red-900/30' },
+      { id: 'purple', class: 'bg-purple-100 dark:bg-purple-900/30' },
+  ];
+
   return (
     <div className={`flex h-screen bg-gray-50 dark:bg-[#021221] text-gray-900 dark:text-gray-100`}>
       <aside className={`${isSidebarCollapsed ? 'w-16' : 'w-56'} bg-white dark:bg-[#1e293b] border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 relative z-30 shadow-sm`}>
-        {/* ... Sidebar content same as before ... */}
+        {/* ... Sidebar Content ... */}
         <button onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} className="absolute -right-3 top-8 bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-gray-600 rounded-full p-1 shadow-md text-gray-500 hover:text-[#00b4d8] z-10">
             {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
@@ -612,7 +517,6 @@ export default function App() {
 
       <main className="flex-1 flex flex-col overflow-hidden bg-gray-50 dark:bg-[#021221] transition-colors relative">
         <header className="h-16 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 bg-white dark:bg-[#1e293b] shrink-0 z-20 shadow-sm relative">
-           {/* ... Header content ... */}
            <div className="flex items-center gap-4">
                <h2 className="text-xl font-bold text-gray-800 dark:text-white whitespace-nowrap">
                   Time de Planejamento
@@ -642,35 +546,33 @@ export default function App() {
         <div className="flex-1 overflow-auto p-0 scrollbar-hide">
            {activeView === 'list' && <div className="p-6"><ProjectListView tasks={filteredTasks} taskGroups={currentGroups} users={users} onTaskClick={handleTaskClick} onAddTask={(groupId) => { setPreSelectedGroupId(groupId); setIsNewTaskModalOpen(true); }} onUpdateTask={handleUpdateTask} onDeleteProject={handleDeleteProject} /></div>}
            
-           {/* Trello-like Board View */}
+           {/* Compact Trello-like Board View */}
            {activeView === 'board' && (
                <div className="h-full overflow-x-auto overflow-y-hidden whitespace-nowrap p-4 bg-[#0079bf] dark:bg-[#021221] bg-opacity-10 dark:bg-opacity-100">
-                 <div className="flex h-full gap-4 items-start">
+                 <div className="flex h-full gap-2 items-start">
                      {columns.map((column, index) => {
-                       // Filter based on kanbanColumnId. If it's the first column, also include tasks with no ID (fallback)
                        const columnTasks = filteredTasks.filter(t => {
                            if (t.kanbanColumnId) return t.kanbanColumnId === column.id;
-                           return index === 0; // Default bucket for legacy tasks or default logic
+                           return index === 0;
                        });
 
                        return (
                          <div 
                             key={column.id} 
-                            className="w-72 flex-shrink-0 flex flex-col max-h-full bg-gray-100 dark:bg-[#101204] dark:bg-[#1e293b] rounded-xl border border-gray-300 dark:border-gray-700 shadow-sm"
+                            // Reduced width w-64 for more compact view
+                            className={`w-64 flex-shrink-0 flex flex-col max-h-full rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm transition-colors ${column.color}`}
                             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }} 
                             onDrop={(e) => {
                                 e.preventDefault();
                                 const taskId = e.dataTransfer.getData('taskId');
                                 const task = tasks.find(t => t.id === taskId);
-                                
-                                // FIX: Update only kanbanColumnId, NOT status.
                                 if(task && task.kanbanColumnId !== column.id) {
                                     handleUpdateTask({ ...task, kanbanColumnId: column.id });
                                 }
                             }}
                          >
-                           {/* Column Header - Editable */}
-                           <div className="p-3 font-bold text-gray-700 dark:text-gray-200 text-sm flex justify-between items-center handle cursor-grab active:cursor-grabbing border-b border-gray-200 dark:border-gray-600">
+                           {/* Column Header */}
+                           <div className="p-2 font-bold text-gray-700 dark:text-gray-200 text-xs flex justify-between items-center handle cursor-grab active:cursor-grabbing border-b border-gray-200/50 dark:border-gray-600/50">
                              <div className="flex items-center gap-2 flex-1 min-w-0">
                                 {index === 0 && <Inbox size={14} className="text-[#00b4d8]" />}
                                 {editingColumnId === column.id ? (
@@ -680,7 +582,7 @@ export default function App() {
                                         onChange={(e) => setEditingColumnTitle(e.target.value)}
                                         onBlur={handleUpdateColumn}
                                         onKeyDown={(e) => e.key === 'Enter' && handleUpdateColumn()}
-                                        className="w-full bg-white dark:bg-[#0f172a] border border-[#00b4d8] rounded px-1 text-sm outline-none"
+                                        className="w-full bg-white dark:bg-[#0f172a] border border-[#00b4d8] rounded px-1 text-xs outline-none"
                                     />
                                 ) : (
                                     <span 
@@ -691,20 +593,41 @@ export default function App() {
                                         {column.title}
                                     </span>
                                 )}
-                                <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-1.5 py-0.5 rounded text-[10px]">{columnTasks.length}</span>
+                                <span className="bg-black/10 dark:bg-white/10 text-gray-600 dark:text-gray-300 px-1.5 rounded text-[10px]">{columnTasks.length}</span>
                              </div>
                              
-                             <div className="flex items-center gap-1">
-                                 {index !== 0 && ( // Prevent deleting the first column
-                                     <button onClick={() => handleDeleteColumn(column.id, index)} className="p-1 text-gray-400 hover:text-red-500 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors">
+                             <div className="flex items-center gap-1 relative">
+                                 {/* Column Color Picker Trigger */}
+                                 <button 
+                                    onClick={() => setActiveColorMenuColumnId(activeColorMenuColumnId === column.id ? null : column.id)}
+                                    className="p-1 text-gray-400 hover:text-indigo-500 hover:bg-black/5 dark:hover:bg-white/10 rounded transition-colors"
+                                 >
+                                     <Palette size={12} />
+                                 </button>
+
+                                 {/* Color Menu Popover */}
+                                 {activeColorMenuColumnId === column.id && (
+                                     <div className="absolute top-6 right-0 z-50 bg-white dark:bg-[#1e293b] p-2 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 grid grid-cols-3 gap-1 w-24">
+                                         {listColors.map(c => (
+                                             <button 
+                                                key={c.id}
+                                                onClick={() => handleUpdateColumnColor(column.id, c.class)}
+                                                className={`w-5 h-5 rounded-full ${c.class} border border-gray-300 dark:border-gray-600 hover:scale-110 transition-transform`}
+                                             />
+                                         ))}
+                                     </div>
+                                 )}
+
+                                 {index !== 0 && (
+                                     <button onClick={() => handleDeleteColumn(column.id, index)} className="p-1 text-gray-400 hover:text-red-500 hover:bg-black/5 dark:hover:bg-white/10 rounded transition-colors">
                                          <Trash2 size={12} />
                                      </button>
                                  )}
                              </div>
                            </div>
                            
-                           {/* Cards Container */}
-                           <div className="p-2 space-y-2 overflow-y-auto flex-1 custom-scrollbar min-h-[50px]">
+                           {/* Cards Container - Dense Spacing */}
+                           <div className="p-1.5 space-y-1.5 overflow-y-auto flex-1 custom-scrollbar min-h-[50px]">
                              {columnTasks.map(task => (
                                <TaskCard 
                                 key={task.id} 
@@ -712,18 +635,17 @@ export default function App() {
                                 allUsers={users} 
                                 onClick={() => handleTaskClick(task)} 
                                 onDragStart={(e, t) => e.dataTransfer.setData('taskId', t.id)}
-                                onUpdate={handleUpdateTask}
                                />
                              ))}
                            </div>
 
                            {/* Column Footer */}
-                           <div className="p-2 pt-0">
+                           <div className="p-1.5 pt-0">
                                <button 
-                                onClick={() => { setIsNewTaskModalOpen(true); /* You might want to pre-select status here in a real app */ }}
-                                className="w-full py-1.5 flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-xs font-medium px-2 transition-colors"
+                                onClick={() => { setIsNewTaskModalOpen(true); }}
+                                className="w-full py-1 flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10 rounded-md text-[10px] font-medium px-2 transition-colors"
                                >
-                                   <Plus size={14} /> Adicionar um cartão
+                                   <Plus size={12} /> Adicionar cartão
                                </button>
                            </div>
                          </div>
@@ -731,7 +653,7 @@ export default function App() {
                      })}
 
                      {/* Add List Button */}
-                     <div className="w-72 flex-shrink-0">
+                     <div className="w-64 flex-shrink-0">
                         {isAddingColumn ? (
                             <div className="bg-gray-100 dark:bg-[#1e293b] p-2 rounded-xl border border-gray-300 dark:border-gray-700 animate-fade-in">
                                 <input 
@@ -739,20 +661,20 @@ export default function App() {
                                     value={newColumnTitle}
                                     onChange={(e) => setNewColumnTitle(e.target.value)}
                                     placeholder="Título da lista..."
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg mb-2 focus:ring-2 focus:ring-[#00b4d8] outline-none bg-white dark:bg-[#0f172a] dark:text-white"
+                                    className="w-full px-3 py-2 text-xs border border-gray-300 dark:border-gray-600 rounded-lg mb-2 focus:ring-2 focus:ring-[#00b4d8] outline-none bg-white dark:bg-[#0f172a] dark:text-white"
                                     onKeyDown={(e) => e.key === 'Enter' && handleAddColumn()}
                                 />
                                 <div className="flex gap-2">
-                                    <button onClick={handleAddColumn} className="bg-[#00b4d8] hover:bg-[#0096c7] text-white px-3 py-1.5 rounded text-xs font-bold transition-colors">Adicionar lista</button>
-                                    <button onClick={() => setIsAddingColumn(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><X size={18} /></button>
+                                    <button onClick={handleAddColumn} className="bg-[#00b4d8] hover:bg-[#0096c7] text-white px-3 py-1.5 rounded text-[10px] font-bold transition-colors">Adicionar</button>
+                                    <button onClick={() => setIsAddingColumn(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><X size={16} /></button>
                                 </div>
                             </div>
                         ) : (
                             <button 
                                 onClick={() => setIsAddingColumn(true)}
-                                className="w-full bg-white/20 hover:bg-white/30 dark:bg-gray-800/50 dark:hover:bg-gray-800/80 p-3 rounded-xl text-white dark:text-gray-300 text-sm font-bold flex items-center gap-2 transition-all backdrop-blur-sm border border-white/10 dark:border-gray-700"
+                                className="w-full bg-white/20 hover:bg-white/30 dark:bg-gray-800/50 dark:hover:bg-gray-800/80 p-3 rounded-xl text-white dark:text-gray-300 text-xs font-bold flex items-center gap-2 transition-all backdrop-blur-sm border border-white/10 dark:border-gray-700"
                             >
-                                <Plus size={16} /> Adicionar outra lista
+                                <Plus size={14} /> Adicionar lista
                             </button>
                         )}
                      </div>
@@ -769,16 +691,13 @@ export default function App() {
         </div>
       </main>
 
-      {/* ... Modals (New Task, New Project) keep same ... */}
-      {/* Task Modal */}
+      {/* ... Modals (New Task, New Project) ... */}
       <Modal isOpen={!!selectedTask} onClose={() => setSelectedTask(null)} title="Detalhes da Tarefa">
         {selectedTask && currentUser && <TaskDetail task={selectedTask} users={users} columns={columns} currentUser={currentUser} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} onRequestApproval={() => {}} />}
       </Modal>
 
-      {/* New Task Modal Expanded */}
       <Modal isOpen={isNewTaskModalOpen} onClose={() => setIsNewTaskModalOpen(false)} title="Criar Nova Tarefa" maxWidth="max-w-2xl">
         <form onSubmit={handleCreateTask} className="space-y-6">
-          {/* ... Task Form Fields ... */}
           <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-bold mb-1 dark:text-gray-300">Título da Tarefa</label>
@@ -826,9 +745,7 @@ export default function App() {
                 </select>
           </div>
 
-          {/* Subtasks Section */}
           <div className="bg-gray-50 dark:bg-[#0f172a] p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-              {/* ... Subtask UI same as before ... */}
               <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 flex items-center justify-between">
                   <span>Atividades da Tarefa</span>
                   <span className="text-xs font-normal text-gray-500">Defina responsável e prazo para cada etapa</span>
@@ -901,7 +818,6 @@ export default function App() {
               </div>
           </div>
 
-          {/* Auto Calculated Summary */}
           <div className="flex items-center justify-between p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-100 dark:border-indigo-800">
               <div className="flex items-center gap-2 text-indigo-800 dark:text-indigo-300 font-bold text-sm">
                   <Clock size={16} /> Total Esforço: {newTaskSubtasks.reduce((acc, curr) => acc + (curr.duration || 0), 0)} dias
@@ -920,7 +836,6 @@ export default function App() {
         </form>
       </Modal>
 
-      {/* New Project Modal (Fixed Colors) */}
       <Modal isOpen={isNewProjectModalOpen} onClose={() => setIsNewProjectModalOpen(false)} title="Novo Projeto" maxWidth="max-w-md">
         <form onSubmit={handleCreateProject} className="space-y-4">
             <div>
