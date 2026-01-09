@@ -101,7 +101,10 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeView, setActiveView] = useState<'list' | 'board' | 'gantt' | 'dashboard' | 'team' | 'profile' | 'routines'>('list');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(true); 
+  
+  // THEME: Default to Light (false)
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  
   const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
   
   const [currentTeamId, setCurrentTeamId] = useState<string | null>(null);
@@ -240,6 +243,55 @@ export default function App() {
   useEffect(() => {
     loadData();
   }, [loadData]); 
+
+  // Realtime Notifications Setup
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // Request permissions for browser notifications
+    if (Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+
+    const channel = supabase
+      .channel('public:notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${currentUser.id}`
+        },
+        (payload) => {
+          // New notification received
+          const newNotif = payload.new;
+          
+          const mappedNotif: Notification = {
+            id: newNotif.id,
+            userId: newNotif.user_id,
+            taskId: newNotif.task_id,
+            type: newNotif.type,
+            title: newNotif.title,
+            message: newNotif.message,
+            read: newNotif.read,
+            timestamp: newNotif.created_at
+          };
+          
+          setNotifications(prev => [mappedNotif, ...prev]);
+          
+          // Browser Notification
+          if (Notification.permission === 'granted') {
+             new Notification(mappedNotif.title, { body: mappedNotif.message });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser]);
 
   const handleLogout = async () => {
       await supabase.auth.signOut();

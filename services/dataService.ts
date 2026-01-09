@@ -202,7 +202,16 @@ export const api = {
         columns: mappedColumns,
         tasks: tasksRes.data ? tasksRes.data.map(mapTask) : [], 
         routines: routinesRes.data ? routinesRes.data.map((r:any) => ({ ...r, teamId: r.team_id, assigneeId: r.assignee_id, daysOfWeek: r.days_of_week, lastCompletedDate: r.last_completed_date })) : [],
-        notifications: notificationsRes.data ? notificationsRes.data.map((n:any) => ({ ...n, userId: n.user_id, taskId: n.task_id })) : [],
+        notifications: notificationsRes.data ? notificationsRes.data.map((n:any) => ({ 
+            id: n.id, 
+            userId: n.user_id, 
+            taskId: n.task_id, 
+            type: n.type,
+            title: n.title,
+            message: n.message,
+            read: n.read,
+            timestamp: n.created_at
+        })) : [],
         meetings: [],
         roles: mappedRoles
       };
@@ -215,16 +224,22 @@ export const api = {
   // --- Notification Management ---
   createNotification: async (userId: string, taskId: string | undefined, type: string, title: string, message: string) => {
       try {
+          // FIX: Ensure taskId is null if empty string to prevent UUID error
+          const validTaskId = taskId && taskId.length > 0 ? taskId : null;
+
           const { error } = await supabase.from('notifications').insert({
               user_id: userId,
-              task_id: taskId,
+              task_id: validTaskId,
               type,
               title,
               message,
               read: false
           });
-          if (error) console.error("Error creating notification:", error);
-          return !error;
+          if (error) {
+              console.error("Error creating notification:", error);
+              return false;
+          }
+          return true;
       } catch (e) {
           console.error("Exception creating notification:", e);
           return false;
