@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Task, User, Priority, Status, Subtask, Attachment, Comment, Column, ApprovalStatus, TaskTimelineEntry } from '../types';
-import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2, AlertTriangle, Layout, PlayCircle, CheckCircle2, PauseCircle, XCircle, Info, Image as ImageIcon, Eye, Download, Save } from 'lucide-react';
+import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2, AlertTriangle, Layout, PlayCircle, CheckCircle2, PauseCircle, XCircle, Info, Image as ImageIcon, Eye, Download, Save, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { generateSubtasks, generateTaskDescription } from '../services/geminiService';
 import { api } from '../services/dataService';
@@ -49,6 +49,53 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
   };
 
   const deadlineAlert = getDeadlineAlert();
+
+  // --- APPROVAL LOGIC ---
+  const handleApproverChange = async (approverId: string) => {
+      if (!approverId) {
+          await handleFieldUpdate('approverId', null);
+          return;
+      }
+      
+      const newApprover = users.find(u => u.id === approverId);
+      const updates = { 
+          ...task, 
+          approverId: approverId, 
+          approvalStatus: 'pending' as ApprovalStatus 
+      };
+      
+      onUpdate(updates);
+      await api.updateTask(updates);
+      
+      // Notify the new approver
+      await api.createNotification(
+          approverId, 
+          task.id, 
+          'approval_request', 
+          'Aprovação Solicitada', 
+          `Você foi definido como aprovador da tarefa "${task.title}".`
+      );
+      
+      await api.logTimelineEvent(task.id, 'info', undefined, undefined, `Aprovador definido: ${newApprover?.name}`);
+  };
+
+  const handleApprovalAction = async (status: 'approved' | 'rejected') => {
+      const updates = { ...task, approvalStatus: status };
+      onUpdate(updates);
+      await api.updateTask(updates);
+
+      // Notify the Assignee
+      if (task.assigneeId) {
+          const title = status === 'approved' ? 'Tarefa Aprovada!' : 'Tarefa Rejeitada';
+          const msg = status === 'approved' 
+            ? `Sua tarefa "${task.title}" foi aprovada por ${currentUser.name}.`
+            : `Sua tarefa "${task.title}" foi rejeitada por ${currentUser.name}. Verifique os comentários.`;
+            
+          await api.createNotification(task.assigneeId, task.id, 'approval_result', title, msg);
+      }
+
+      await api.logTimelineEvent(task.id, 'info', undefined, undefined, `Aprovação: ${status === 'approved' ? 'Aprovado' : 'Rejeitado'} por ${currentUser.name}`);
+  };
 
   // --- GENERIC FIELD UPDATER WITH LOGGING ---
   const handleFieldUpdate = async (field: keyof Task, value: any, logMessage?: string) => {
@@ -458,46 +505,99 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
           </div>
       </div>
 
-      {/* 2. People Section */}
-      <div className="bg-gray-50 dark:bg-[#1b263b]/50 p-4 rounded-xl border border-gray-100 dark:border-gray-700 grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-              <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase mb-3">
-                  <UserIcon size={14}/> Responsável Principal
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {users.map(u => (
-                    <button 
-                        key={u.id} 
-                        onClick={() => handleFieldUpdate('assigneeId', task.assigneeId === u.id ? null : u.id)} 
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all hover:bg-white dark:hover:bg-[#1e293b] ${task.assigneeId === u.id ? 'bg-white dark:bg-[#1e293b] border-indigo-500 ring-1 ring-indigo-500 shadow-sm' : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'}`}
-                    >
-                        <Avatar src={u.avatar} alt={u.name} size="sm" />
-                        <span className={`text-sm ${task.assigneeId === u.id ? 'font-bold text-indigo-700 dark:text-indigo-300' : 'text-gray-600 dark:text-gray-300'}`}>{u.name}</span>
-                        {task.assigneeId === u.id && <Check size={14} className="text-indigo-500 ml-1" />}
-                    </button>
-                ))}
+      {/* 2. People & Approval Section */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Members Card */}
+          <div className="md:col-span-2 bg-gray-50 dark:bg-[#1b263b]/50 p-4 rounded-xl border border-gray-100 dark:border-gray-700 grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div>
+                  <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase mb-3">
+                      <UserIcon size={14}/> Responsável Principal
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {users.map(u => (
+                        <button 
+                            key={u.id} 
+                            onClick={() => handleFieldUpdate('assigneeId', task.assigneeId === u.id ? null : u.id)} 
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all hover:bg-white dark:hover:bg-[#1e293b] ${task.assigneeId === u.id ? 'bg-white dark:bg-[#1e293b] border-indigo-500 ring-1 ring-indigo-500 shadow-sm' : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'}`}
+                        >
+                            <Avatar src={u.avatar} alt={u.name} size="sm" />
+                            <span className={`text-sm ${task.assigneeId === u.id ? 'font-bold text-indigo-700 dark:text-indigo-300' : 'text-gray-600 dark:text-gray-300'}`}>{u.name}</span>
+                            {task.assigneeId === u.id && <Check size={14} className="text-indigo-500 ml-1" />}
+                        </button>
+                    ))}
+                  </div>
+              </div>
+
+              <div>
+                  <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase mb-3">
+                      <UsersIcon size={14}/> Equipe de Apoio
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                      {users.map(u => {
+                          const isSelected = task.supportIds?.includes(u.id);
+                          return (
+                            <button key={u.id} onClick={() => {
+                                const current = task.supportIds || [];
+                                const next = current.includes(u.id) ? current.filter(id => id !== u.id) : [...current, u.id];
+                                handleFieldUpdate('supportIds', next, isSelected ? `Removeu ${u.name} do apoio` : `Adicionou ${u.name} ao apoio`);
+                            }} className={`relative`}>
+                                 <Avatar src={u.avatar} alt={u.name} size="sm" className={`transition-all ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-[#021221]' : 'opacity-50 hover:opacity-100'}`} />
+                                 {isSelected && <div className="absolute -top-1 -right-1 bg-indigo-500 w-3 h-3 rounded-full border-2 border-white dark:border-[#021221]"></div>}
+                            </button>
+                          );
+                      })}
+                  </div>
               </div>
           </div>
 
-          <div>
-              <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase mb-3">
-                  <UsersIcon size={14}/> Equipe de Apoio
-              </label>
-              <div className="flex flex-wrap gap-2">
-                  {users.map(u => {
-                      const isSelected = task.supportIds?.includes(u.id);
-                      return (
-                        <button key={u.id} onClick={() => {
-                            const current = task.supportIds || [];
-                            const next = current.includes(u.id) ? current.filter(id => id !== u.id) : [...current, u.id];
-                            handleFieldUpdate('supportIds', next, isSelected ? `Removeu ${u.name} do apoio` : `Adicionou ${u.name} ao apoio`);
-                        }} className={`relative`}>
-                             <Avatar src={u.avatar} alt={u.name} size="sm" className={`transition-all ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-[#021221]' : 'opacity-50 hover:opacity-100'}`} />
-                             {isSelected && <div className="absolute -top-1 -right-1 bg-indigo-500 w-3 h-3 rounded-full border-2 border-white dark:border-[#021221]"></div>}
-                        </button>
-                      );
-                  })}
+          {/* Approval Card */}
+          <div className={`p-4 rounded-xl border ${task.approvalStatus === 'approved' ? 'bg-green-50 border-green-200 dark:bg-green-900/10 dark:border-green-800' : task.approvalStatus === 'rejected' ? 'bg-red-50 border-red-200 dark:bg-red-900/10 dark:border-red-800' : 'bg-gray-50 dark:bg-[#1b263b]/50 border-gray-100 dark:border-gray-700'}`}>
+              <div className="flex justify-between items-center mb-3">
+                  <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase">
+                      <ShieldCheck size={14}/> Gestão de Aprovação
+                  </label>
+                  <div className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
+                      task.approvalStatus === 'approved' ? 'text-green-600 bg-green-100' : 
+                      task.approvalStatus === 'rejected' ? 'text-red-600 bg-red-100' : 
+                      'text-gray-500 bg-gray-200'
+                  }`}>
+                      {task.approvalStatus === 'approved' ? 'Aprovado' : task.approvalStatus === 'rejected' ? 'Rejeitado' : 'Pendente'}
+                  </div>
               </div>
+
+              <div className="mb-4">
+                  <select
+                      value={task.approverId || ''}
+                      onChange={(e) => handleApproverChange(e.target.value)}
+                      className="w-full text-xs bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-2 outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                      <option value="">-- Selecione o Aprovador --</option>
+                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+              </div>
+
+              {task.approverId && task.approverId === currentUser.id ? (
+                  <div className="flex gap-2">
+                      <button 
+                          onClick={() => handleApprovalAction('approved')}
+                          className="flex-1 bg-green-600 hover:bg-green-700 text-white py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                      >
+                          <ThumbsUp size={12} /> Aprovar
+                      </button>
+                      <button 
+                          onClick={() => handleApprovalAction('rejected')}
+                          className="flex-1 bg-red-600 hover:bg-red-700 text-white py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
+                      >
+                          <ThumbsDown size={12} /> Rejeitar
+                      </button>
+                  </div>
+              ) : (
+                  task.approverId && (
+                      <p className="text-[10px] text-gray-400 text-center italic mt-2">
+                          Aguardando análise de {users.find(u => u.id === task.approverId)?.name || 'Aprovador'}
+                      </p>
+                  )
+              )}
           </div>
       </div>
 

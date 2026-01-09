@@ -212,6 +212,35 @@ export const api = {
     }
   },
 
+  // --- Notification Management ---
+  createNotification: async (userId: string, taskId: string | undefined, type: string, title: string, message: string) => {
+      try {
+          const { error } = await supabase.from('notifications').insert({
+              user_id: userId,
+              task_id: taskId,
+              type,
+              title,
+              message,
+              read: false
+          });
+          if (error) console.error("Error creating notification:", error);
+          return !error;
+      } catch (e) {
+          console.error("Exception creating notification:", e);
+          return false;
+      }
+  },
+
+  markNotificationAsRead: async (notificationId: string) => {
+      const { error } = await supabase.from('notifications').update({ read: true }).eq('id', notificationId);
+      return !error;
+  },
+
+  markAllNotificationsAsRead: async (userId: string) => {
+      const { error } = await supabase.from('notifications').update({ read: true }).eq('user_id', userId);
+      return !error;
+  },
+
   // --- Column Management (Team Scoped) ---
   createColumn: async (teamId: string, title: string) => {
       const colors = [

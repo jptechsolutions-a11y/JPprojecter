@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2, Calendar as CalendarIcon, Clock, Trash2, AlertCircle, AlertTriangle, X, Edit2, Check, Inbox, Palette, Filter } from 'lucide-react';
+import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2, Calendar as CalendarIcon, Clock, Trash2, AlertCircle, AlertTriangle, X, Edit2, Check, Inbox, Palette, Filter, Bell } from 'lucide-react';
 import { Avatar } from './components/Avatar';
 import { Modal } from './components/Modal';
 import { TaskDetail } from './components/TaskDetail';
@@ -133,6 +133,9 @@ export default function App() {
       tags: [],
       dateRange: { start: '', end: '' }
   });
+
+  // Notifications Logic
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   // New Task Form State
   const [newTaskSubtasks, setNewTaskSubtasks] = useState<Partial<Subtask>[]>([]);
@@ -310,6 +313,7 @@ export default function App() {
   }, [tasks]);
 
   const activeFiltersCount = filters.status.length + filters.priority.length + filters.assigneeIds.length + filters.tags.length + (filters.dateRange.start ? 1 : 0);
+  const unreadNotificationsCount = notifications.filter(n => !n.read).length;
 
   const handleTaskClick = async (task: Task) => {
       setSelectedTask(task);
@@ -318,6 +322,25 @@ export default function App() {
           setSelectedTask(fullTask);
           setTasks(prev => prev.map(t => t.id === fullTask.id ? fullTask : t));
       }
+  };
+
+  const handleNotificationClick = async (notification: Notification) => {
+      await api.markNotificationAsRead(notification.id);
+      setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, read: true } : n));
+      
+      if (notification.taskId) {
+          const task = tasks.find(t => t.id === notification.taskId);
+          if (task) {
+              handleTaskClick(task);
+          } else {
+              // Try fetching if not in list
+              const fullTask = await api.getTaskDetails(notification.taskId);
+              if(fullTask) {
+                  setSelectedTask(fullTask);
+              }
+          }
+      }
+      setIsNotificationsOpen(false);
   };
 
   const handleUpdateTask = async (updatedTask: Task) => {
@@ -664,6 +687,49 @@ export default function App() {
            </div>
            
            <div className="flex items-center gap-4">
+             {/* Notification Bell */}
+             <div className="relative">
+                 <button 
+                    onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} 
+                    className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors relative"
+                 >
+                    <Bell size={20} />
+                    {unreadNotificationsCount > 0 && (
+                        <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-[#1e293b]"></span>
+                    )}
+                 </button>
+
+                 {isNotificationsOpen && (
+                     <div className="absolute top-full right-0 mt-2 w-80 bg-white dark:bg-[#1e293b] rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-fade-in z-50">
+                         <div className="p-3 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-[#1b263b]">
+                             <span className="text-xs font-bold text-gray-600 dark:text-gray-300">Notificações</span>
+                             <button onClick={() => { if(currentUser) api.markAllNotificationsAsRead(currentUser.id); setNotifications(prev => prev.map(n => ({...n, read: true}))); }} className="text-[10px] text-[#00b4d8] hover:underline font-bold">Marcar todas como lidas</button>
+                         </div>
+                         <div className="max-h-80 overflow-y-auto">
+                             {notifications.length === 0 ? (
+                                 <div className="p-6 text-center text-gray-400 text-xs italic">
+                                     Nenhuma notificação recente.
+                                 </div>
+                             ) : (
+                                 notifications.map(n => (
+                                     <div 
+                                        key={n.id} 
+                                        onClick={() => handleNotificationClick(n)}
+                                        className={`p-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-[#0f172a] cursor-pointer transition-colors ${!n.read ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}
+                                     >
+                                         <div className="flex justify-between items-start mb-1">
+                                             <span className={`text-xs font-bold ${!n.read ? 'text-[#00b4d8]' : 'text-gray-700 dark:text-gray-300'}`}>{n.title}</span>
+                                             <span className="text-[9px] text-gray-400">{new Date(n.timestamp).toLocaleDateString()}</span>
+                                         </div>
+                                         <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{n.message}</p>
+                                     </div>
+                                 ))
+                             )}
+                         </div>
+                     </div>
+                 )}
+             </div>
+
              <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
                 {isDarkMode ? <Sun size={20} className="text-yellow-500" /> : <Moon size={20} className="text-[#00b4d8]" />}
              </button>
