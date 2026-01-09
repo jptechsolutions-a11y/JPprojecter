@@ -65,9 +65,10 @@ const mapTask = (t: any): Task => ({
 });
 
 // --- Constants ---
-// Fallback apenas se o banco falhar totalmente
-const DEFAULT_COLUMNS = [
-  { title: 'Backlog Geral', color: 'bg-gray-100 dark:bg-gray-800' }
+const FALLBACK_COLUMNS = [
+  { id: 'col-1', title: 'A Fazer', color: 'bg-gray-100 dark:bg-gray-800' },
+  { id: 'col-2', title: 'Em Progresso', color: 'bg-blue-100 dark:bg-blue-900/30' },
+  { id: 'col-3', title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30' }
 ];
 
 export const api = {
@@ -103,11 +104,10 @@ export const api = {
           teamId = userTeams[0].id;
       }
 
-      // Parallel fetching
+      // Parallel fetching - Separated columns to catch errors gracefully
       const [
           teamUsersRes,
           groupsRes,
-          columnsRes,
           tasksRes,
           routinesRes,
           notificationsRes,
@@ -115,12 +115,30 @@ export const api = {
       ] = await Promise.all([
           supabase.from('team_members').select('user_id, role, profiles(*)').eq('team_id', teamId),
           supabase.from('task_groups').select('*').eq('team_id', teamId),
-          supabase.from('columns').select('*').order('created_at', { ascending: true }),
           supabase.from('tasks').select('*, subtasks(*)').eq('team_id', teamId), 
           supabase.from('routines').select('*').eq('team_id', teamId),
           supabase.from('notifications').select('*').eq('user_id', currentUserId).order('created_at', { ascending: false }).limit(50),
           supabase.from('team_roles').select('*').eq('team_id', teamId)
       ]);
+
+      // Fetch Columns separately to handle missing table (400/404) without crashing the app
+      let mappedColumns: Column[] = [];
+      try {
+          const { data: colsData, error: colsErr } = await supabase.from('columns').select('*').order('created_at', { ascending: true });
+          
+          if (colsErr) {
+              console.warn("Columns fetch failed (using fallback):", colsErr.message);
+              mappedColumns = FALLBACK_COLUMNS;
+          } else if (colsData && colsData.length > 0) {
+              mappedColumns = colsData.map((c:any) => ({ id: c.id, title: c.title, color: c.color }));
+          } else {
+              // Table exists but is empty
+              mappedColumns = FALLBACK_COLUMNS;
+          }
+      } catch (e) {
+          console.warn("Columns fetch exception:", e);
+          mappedColumns = FALLBACK_COLUMNS;
+      }
 
       const mappedUsers = teamUsersRes.data ? teamUsersRes.data.map((tu: any) => {
           const user = mapUser(tu.profiles);
@@ -136,20 +154,6 @@ export const api = {
           }
           return t;
       });
-
-      // --- Robust Column Handling ---
-      let mappedColumns: Column[] = [];
-      
-      if (columnsRes.data && columnsRes.data.length > 0) {
-          mappedColumns = columnsRes.data.map((c:any) => ({ id: c.id, title: c.title, color: c.color }));
-      } else {
-           // Se não tem colunas no banco, cria a padrão
-           const { data: createdCols, error: createErr } = await supabase.from('columns').insert(DEFAULT_COLUMNS).select();
-           
-           if (!createErr && createdCols) {
-               mappedColumns = createdCols.map((c:any) => ({ id: c.id, title: c.title, color: c.color }));
-           }
-      }
       
       const mappedRoles: TeamRole[] = rolesRes.data ? rolesRes.data.map((r: any) => ({
           id: r.id,
@@ -189,7 +193,8 @@ export const api = {
       } catch (e) {
           console.error("Erro ao criar coluna:", e);
       }
-      return null;
+      // Return a temp local object if DB fails so UI updates optimistically
+      return { id: crypto.randomUUID(), title: title, color: randomColor };
   },
 
   updateColumn: async (columnId: string, title: string) => {
