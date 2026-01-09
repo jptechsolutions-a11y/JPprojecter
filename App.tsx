@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2, Calendar as CalendarIcon, Clock, Trash2, AlertCircle, AlertTriangle, X, Edit2, Check, Inbox, Palette } from 'lucide-react';
+import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2, Calendar as CalendarIcon, Clock, Trash2, AlertCircle, AlertTriangle, X, Edit2, Check, Inbox, Palette, Filter } from 'lucide-react';
 import { Avatar } from './components/Avatar';
 import { Modal } from './components/Modal';
 import { TaskDetail } from './components/TaskDetail';
@@ -12,6 +12,7 @@ import { TeamOnboarding } from './components/TeamOnboarding';
 import { RoutineTasksView } from './components/RoutineTasksView';
 import { TeamView } from './components/TeamView';
 import { ProfileView } from './components/ProfileView'; 
+import { FilterPopover, FilterState } from './components/FilterPopover';
 import { Task, User, Column, Status, Team, TaskGroup, RoutineTask, Notification, TeamRole, Subtask } from './types';
 import { api } from './services/dataService'; 
 import { supabase } from './services/supabaseClient';
@@ -122,7 +123,16 @@ export default function App() {
   const [isLoadingData, setIsLoadingData] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterMyTasks, setFilterMyTasks] = useState(false);
+  
+  // Filter Logic
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filters, setFilters] = useState<FilterState>({
+      status: [],
+      priority: [],
+      assigneeIds: [],
+      tags: [],
+      dateRange: { start: '', end: '' }
+  });
 
   // New Task Form State
   const [newTaskSubtasks, setNewTaskSubtasks] = useState<Partial<Subtask>[]>([]);
@@ -246,15 +256,60 @@ export default function App() {
 
   const filteredTasks = useMemo(() => {
     if (!currentUser) return [];
+    
     return tasks.filter(t => {
+      // 1. Basic Team Check
       if (t.teamId !== currentTeamId) return false;
-      if (filterMyTasks && t.assigneeId !== currentUser.id) return false;
-      const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                            t.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-      if (!matchesSearch) return false;
+      
+      // 2. Search Query Check
+      if (searchQuery) {
+          const lowerQ = searchQuery.toLowerCase();
+          const matchesSearch = t.title.toLowerCase().includes(lowerQ) || 
+                                t.tags.some(tag => tag.toLowerCase().includes(lowerQ));
+          if (!matchesSearch) return false;
+      }
+
+      // 3. Advanced Filters
+      
+      // Status
+      if (filters.status.length > 0 && !filters.status.includes(t.status)) return false;
+      
+      // Priority
+      if (filters.priority.length > 0 && !filters.priority.includes(t.priority)) return false;
+      
+      // Assignees
+      if (filters.assigneeIds.length > 0) {
+          // Check if assignee is in list OR if support contains user
+          const isAssignee = t.assigneeId && filters.assigneeIds.includes(t.assigneeId);
+          // const isSupport = t.supportIds && t.supportIds.some(id => filters.assigneeIds.includes(id));
+          if (!isAssignee) return false;
+      }
+
+      // Date Range (Due Date)
+      if (filters.dateRange.start && t.dueDate) {
+          if (new Date(t.dueDate) < new Date(filters.dateRange.start)) return false;
+      }
+      if (filters.dateRange.end && t.dueDate) {
+          if (new Date(t.dueDate) > new Date(filters.dateRange.end)) return false;
+      }
+
+      // Tags
+      if (filters.tags.length > 0) {
+          const hasTag = t.tags && t.tags.some(tag => filters.tags.includes(tag));
+          if (!hasTag) return false;
+      }
+
       return true;
     });
-  }, [tasks, currentTeamId, searchQuery, filterMyTasks, currentUser]);
+  }, [tasks, currentTeamId, searchQuery, filters, currentUser]);
+
+  const allTags = useMemo(() => {
+      const tags = new Set<string>();
+      tasks.forEach(t => t.tags?.forEach(tag => tags.add(tag)));
+      return Array.from(tags);
+  }, [tasks]);
+
+  const activeFiltersCount = filters.status.length + filters.priority.length + filters.assigneeIds.length + filters.tags.length + (filters.dateRange.start ? 1 : 0);
 
   const handleTaskClick = async (task: Task) => {
       setSelectedTask(task);
@@ -571,15 +626,40 @@ export default function App() {
                <h2 className="text-xl font-bold text-gray-800 dark:text-white whitespace-nowrap">
                   JP Nexus
                </h2>
-               <div className="hidden md:flex relative ml-4">
-                   <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                   <input 
-                      type="text" 
-                      placeholder="Buscar tarefas..." 
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 pr-4 py-1.5 bg-gray-100 dark:bg-[#0f172a] border border-transparent focus:bg-white dark:focus:bg-[#0f172a] dark:text-white focus:ring-2 focus:ring-[#00b4d8] rounded-full text-xs outline-none transition-all w-64"
-                   />
+               <div className="hidden md:flex relative ml-4 items-center gap-2">
+                   <div className="relative">
+                       <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                       <input 
+                          type="text" 
+                          placeholder="Buscar tarefas..." 
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-10 pr-4 py-1.5 bg-gray-100 dark:bg-[#0f172a] border border-transparent focus:bg-white dark:focus:bg-[#0f172a] dark:text-white focus:ring-2 focus:ring-[#00b4d8] rounded-full text-xs outline-none transition-all w-56"
+                       />
+                   </div>
+                   
+                   {/* Filter Button */}
+                   <div className="relative">
+                       <button 
+                          onClick={() => setIsFilterOpen(!isFilterOpen)} 
+                          className={`p-1.5 rounded-lg flex items-center gap-2 text-xs font-bold transition-all border ${activeFiltersCount > 0 ? 'bg-[#00b4d8] text-white border-[#00b4d8]' : 'bg-gray-100 dark:bg-[#0f172a] text-gray-500 dark:text-gray-400 border-transparent hover:bg-gray-200 dark:hover:bg-gray-800'}`}
+                       >
+                           <Filter size={14} /> 
+                           <span className="hidden sm:inline">Filtro</span>
+                           {activeFiltersCount > 0 && (
+                               <span className="bg-white text-[#00b4d8] rounded-full w-4 h-4 flex items-center justify-center text-[9px]">{activeFiltersCount}</span>
+                           )}
+                       </button>
+                       
+                       <FilterPopover 
+                          isOpen={isFilterOpen} 
+                          onClose={() => setIsFilterOpen(false)} 
+                          filters={filters} 
+                          setFilters={setFilters} 
+                          users={users}
+                          availableTags={allTags}
+                       />
+                   </div>
                </div>
            </div>
            
