@@ -208,7 +208,20 @@ export const api = {
 
   // --- Column Management (Team Scoped) ---
   createColumn: async (teamId: string, title: string) => {
-      const colors = ['bg-gray-100 dark:bg-gray-800', 'bg-blue-100 dark:bg-blue-900/30', 'bg-purple-100 dark:bg-purple-900/30', 'bg-green-100 dark:bg-green-900/30', 'bg-yellow-100 dark:bg-yellow-900/30', 'bg-red-100 dark:bg-red-900/30'];
+      const colors = [
+        'bg-gray-100 dark:bg-gray-800',
+        'bg-blue-100 dark:bg-blue-900/30',
+        'bg-purple-100 dark:bg-purple-900/30',
+        'bg-green-100 dark:bg-green-900/30',
+        'bg-yellow-100 dark:bg-yellow-900/30',
+        'bg-red-100 dark:bg-red-900/30',
+        'bg-pink-100 dark:bg-pink-900/30',
+        'bg-indigo-100 dark:bg-indigo-900/30',
+        'bg-teal-100 dark:bg-teal-900/30',
+        'bg-orange-100 dark:bg-orange-900/30',
+        'bg-cyan-100 dark:bg-cyan-900/30',
+        'bg-lime-100 dark:bg-lime-900/30'
+      ];
       const randomColor = colors[Math.floor(Math.random() * colors.length)];
       
       try {

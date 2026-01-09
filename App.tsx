@@ -147,7 +147,6 @@ export default function App() {
   const currentTeam = teams.find(t => t.id === currentTeamId) || (teams.length > 0 ? teams[0] : null);
   const currentGroups = taskGroups.filter(g => g.teamId === currentTeamId);
 
-  // ... (Authentication logic remains the same) ...
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setIsAuthenticated(!!session);
@@ -229,7 +228,6 @@ export default function App() {
     loadData();
   }, [loadData]); 
 
-  // ... (Other handlers: Logout, DarkMode, filteredTasks) ...
   const handleLogout = async () => {
       await supabase.auth.signOut();
       setIsAuthenticated(false);
@@ -283,6 +281,7 @@ export default function App() {
   // --- Kanban Column Management ---
   const handleAddColumn = async () => {
       if (!newColumnTitle.trim() || !currentTeamId) return;
+      // Passa o teamId para criar a coluna vinculada ao time
       const newCol = await api.createColumn(currentTeamId, newColumnTitle.trim());
       if (newCol) {
           setColumns([...columns, newCol]);
@@ -327,18 +326,28 @@ export default function App() {
       }
   };
 
-  // ... (Task Creation Handlers, Project Handlers - kept same) ...
+  // ... Rest of the file logic ...
+  // Task Creation Logic, etc.
+
   const handleAddSubtaskToForm = () => {
       if (!newTaskSubTitle.trim()) return;
+      
       const start = new Date(newTaskStartDate);
       const end = new Date(start);
       end.setDate(end.getDate() + newTaskSubDuration);
+
       const sub: Partial<Subtask> = {
-          title: newTaskSubTitle, duration: newTaskSubDuration, assigneeId: newTaskSubAssignee || undefined,
-          startDate: newTaskStartDate, dueDate: end.toISOString().split('T')[0]
+          title: newTaskSubTitle,
+          duration: newTaskSubDuration,
+          assigneeId: newTaskSubAssignee || undefined,
+          startDate: newTaskStartDate, // Use Task Start Date
+          dueDate: end.toISOString().split('T')[0] // Calculated End Date
       };
+
       setNewTaskSubtasks([...newTaskSubtasks, sub]);
-      setNewTaskSubTitle(''); setNewTaskSubDuration(1); setNewTaskSubAssignee('');
+      setNewTaskSubTitle('');
+      setNewTaskSubDuration(1);
+      setNewTaskSubAssignee('');
   };
 
   const handleRemoveSubtaskFromForm = (index: number) => {
@@ -349,6 +358,7 @@ export default function App() {
       if (!newTaskStartDate) return '';
       const totalDays = newTaskSubtasks.reduce((acc, curr) => acc + (curr.duration || 0), 0);
       if (totalDays === 0) return newTaskStartDate;
+      
       const start = new Date(newTaskStartDate);
       const end = new Date(start);
       end.setDate(end.getDate() + totalDays);
@@ -359,37 +369,60 @@ export default function App() {
     e.preventDefault();
     if(isCreatingTask) return;
     setIsCreatingTask(true);
+
     const formData = new FormData(e.currentTarget);
     const title = formData.get('title') as string;
     const status = formData.get('status') as Status; 
     const groupId = formData.get('groupId') as string;
+    
     const actualGroupId = groupId || (currentGroups.length > 0 ? currentGroups[0].id : '');
     
     if (!actualGroupId && currentGroups.length === 0) {
         alert("Crie um projeto antes de criar tarefas!");
-        setIsCreatingTask(false); return;
+        setIsCreatingTask(false);
+        return;
     }
+
     const calculatedDueDate = calculateEndDate();
+    
+    // Default Kanban Column is the first one available
     const defaultKanbanColumnId = columns.length > 0 ? columns[0].id : undefined;
+
     const tempId = crypto.randomUUID();
     const newTask: Task = {
-      id: tempId, groupId: actualGroupId, title, status: status || 'A Fazer', 
-      kanbanColumnId: defaultKanbanColumnId, description: '', priority: 'Média',
-      startDate: newTaskStartDate, dueDate: calculatedDueDate,
-      assigneeId: newTaskAssignee || undefined, tags: [], subtasks: [] as any, progress: 0, attachments: [], comments: [],
-      createdAt: new Date().toISOString(), teamId: currentTeamId || '', approvalStatus: 'none',
-      color: 'default'
+      id: tempId, // Temporary ID
+      groupId: actualGroupId, 
+      title, 
+      status: status || 'A Fazer', 
+      kanbanColumnId: defaultKanbanColumnId, // Set Default Column
+      description: '', 
+      priority: 'Média',
+      startDate: newTaskStartDate,
+      dueDate: calculatedDueDate,
+      assigneeId: newTaskAssignee || undefined, // Set Assignee
+      tags: [], subtasks: [] as any, progress: 0, attachments: [], comments: [],
+      createdAt: new Date().toISOString(), teamId: currentTeamId || '',
+      approvalStatus: 'none',
+      color: 'default' // Default color
     };
     
+    // Create task WITH subtasks
     const result = await api.createTask(newTask, newTaskSubtasks);
+    
     if(result.success && result.data) {
         setTasks([...tasks, result.data]);
         setIsNewTaskModalOpen(false);
-        setNewTaskSubtasks([]); setNewTaskSubTitle(''); setNewTaskSubDuration(1); setNewTaskSubAssignee(''); setNewTaskAssignee('');
+        // Reset Form
+        setNewTaskSubtasks([]);
+        setNewTaskSubTitle('');
+        setNewTaskSubDuration(1);
+        setNewTaskSubAssignee('');
+        setNewTaskAssignee('');
         setNewTaskStartDate(new Date().toISOString().split('T')[0]);
         loadData();
     } else {
         alert("Erro ao criar tarefa.");
+        console.error(result.error);
     }
     setIsCreatingTask(false);
   };
@@ -400,6 +433,7 @@ export default function App() {
       const formData = new FormData(e.currentTarget);
       const title = formData.get('title') as string;
       const color = formData.get('color') as string;
+
       const newGroup = await api.createTaskGroup(currentTeamId, title, color);
       if(newGroup) {
           setTaskGroups([...taskGroups, {id: newGroup.id, title: newGroup.title, color: newGroup.color, teamId: newGroup.teamId}]);
@@ -417,7 +451,7 @@ export default function App() {
   };
 
   const handleDeleteTeam = async (teamId: string) => {
-      if (!confirm("ATENÇÃO: Você tem certeza que deseja excluir este time?")) return;
+      if (!confirm("ATENÇÃO: Você tem certeza que deseja excluir este time?\n\nIsso apagará permanentemente:\n- Todos os projetos\n- Todas as tarefas\n\nEssa ação não pode ser desfeita.")) return;
       setIsLoadingData(true);
       const success = await api.deleteTeam(teamId);
       if (success) {
@@ -425,7 +459,7 @@ export default function App() {
           setCurrentTeamId(null);
           await loadData();
       } else {
-          alert("Erro ao excluir o time.");
+          alert("Erro ao excluir o time. Verifique se você é o dono (Admin).");
           setIsLoadingData(false);
       }
   };
@@ -438,7 +472,7 @@ export default function App() {
     return currentUser ? <TeamOnboarding currentUser={currentUser} onComplete={loadData} /> : null;
   }
 
-  // Define allowed List Colors
+  // Define allowed List Colors (Expanded)
   const listColors = [
       { id: 'gray', class: 'bg-gray-100 dark:bg-gray-800' },
       { id: 'blue', class: 'bg-blue-100 dark:bg-blue-900/30' },
@@ -446,12 +480,18 @@ export default function App() {
       { id: 'yellow', class: 'bg-yellow-100 dark:bg-yellow-900/30' },
       { id: 'red', class: 'bg-red-100 dark:bg-red-900/30' },
       { id: 'purple', class: 'bg-purple-100 dark:bg-purple-900/30' },
+      { id: 'pink', class: 'bg-pink-100 dark:bg-pink-900/30' },
+      { id: 'indigo', class: 'bg-indigo-100 dark:bg-indigo-900/30' },
+      { id: 'teal', class: 'bg-teal-100 dark:bg-teal-900/30' },
+      { id: 'orange', class: 'bg-orange-100 dark:bg-orange-900/30' },
+      { id: 'cyan', class: 'bg-cyan-100 dark:bg-cyan-900/30' },
+      { id: 'lime', class: 'bg-lime-100 dark:bg-lime-900/30' },
   ];
 
   return (
     <div className={`flex h-screen bg-gray-50 dark:bg-[#021221] text-gray-900 dark:text-gray-100`}>
       <aside className={`${isSidebarCollapsed ? 'w-16' : 'w-56'} bg-white dark:bg-[#1e293b] border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 relative z-30 shadow-sm`}>
-        {/* ... Sidebar Content ... */}
+        {/* ... Sidebar content same as before ... */}
         <button onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} className="absolute -right-3 top-8 bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-gray-600 rounded-full p-1 shadow-md text-gray-500 hover:text-[#00b4d8] z-10">
             {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
@@ -517,6 +557,7 @@ export default function App() {
 
       <main className="flex-1 flex flex-col overflow-hidden bg-gray-50 dark:bg-[#021221] transition-colors relative">
         <header className="h-16 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 bg-white dark:bg-[#1e293b] shrink-0 z-20 shadow-sm relative">
+           {/* ... Header content ... */}
            <div className="flex items-center gap-4">
                <h2 className="text-xl font-bold text-gray-800 dark:text-white whitespace-nowrap">
                   Time de Planejamento
@@ -553,7 +594,7 @@ export default function App() {
                      {columns.map((column, index) => {
                        const columnTasks = filteredTasks.filter(t => {
                            if (t.kanbanColumnId) return t.kanbanColumnId === column.id;
-                           return index === 0;
+                           return index === 0; // Default bucket for legacy tasks or default logic
                        });
 
                        return (
@@ -566,6 +607,8 @@ export default function App() {
                                 e.preventDefault();
                                 const taskId = e.dataTransfer.getData('taskId');
                                 const task = tasks.find(t => t.id === taskId);
+                                
+                                // FIX: Update only kanbanColumnId, NOT status.
                                 if(task && task.kanbanColumnId !== column.id) {
                                     handleUpdateTask({ ...task, kanbanColumnId: column.id });
                                 }
@@ -607,18 +650,19 @@ export default function App() {
 
                                  {/* Color Menu Popover */}
                                  {activeColorMenuColumnId === column.id && (
-                                     <div className="absolute top-6 right-0 z-50 bg-white dark:bg-[#1e293b] p-2 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 grid grid-cols-3 gap-1 w-24">
+                                     <div className="absolute top-6 right-0 z-50 bg-white dark:bg-[#1e293b] p-2 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 grid grid-cols-4 gap-1 w-32 animate-fade-in">
                                          {listColors.map(c => (
                                              <button 
                                                 key={c.id}
                                                 onClick={() => handleUpdateColumnColor(column.id, c.class)}
                                                 className={`w-5 h-5 rounded-full ${c.class} border border-gray-300 dark:border-gray-600 hover:scale-110 transition-transform`}
+                                                title={c.id}
                                              />
                                          ))}
                                      </div>
                                  )}
 
-                                 {index !== 0 && (
+                                 {index !== 0 && ( // Prevent deleting the first column
                                      <button onClick={() => handleDeleteColumn(column.id, index)} className="p-1 text-gray-400 hover:text-red-500 hover:bg-black/5 dark:hover:bg-white/10 rounded transition-colors">
                                          <Trash2 size={12} />
                                      </button>
@@ -642,7 +686,7 @@ export default function App() {
                            {/* Column Footer */}
                            <div className="p-1.5 pt-0">
                                <button 
-                                onClick={() => { setIsNewTaskModalOpen(true); }}
+                                onClick={() => { setIsNewTaskModalOpen(true); /* You might want to pre-select status here in a real app */ }}
                                 className="w-full py-1 flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10 rounded-md text-[10px] font-medium px-2 transition-colors"
                                >
                                    <Plus size={12} /> Adicionar cartão
@@ -691,13 +735,16 @@ export default function App() {
         </div>
       </main>
 
-      {/* ... Modals (New Task, New Project) ... */}
+      {/* ... Modals (New Task, New Project) keep same ... */}
+      {/* Task Modal */}
       <Modal isOpen={!!selectedTask} onClose={() => setSelectedTask(null)} title="Detalhes da Tarefa">
         {selectedTask && currentUser && <TaskDetail task={selectedTask} users={users} columns={columns} currentUser={currentUser} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} onRequestApproval={() => {}} />}
       </Modal>
 
+      {/* New Task Modal Expanded */}
       <Modal isOpen={isNewTaskModalOpen} onClose={() => setIsNewTaskModalOpen(false)} title="Criar Nova Tarefa" maxWidth="max-w-2xl">
         <form onSubmit={handleCreateTask} className="space-y-6">
+          {/* ... Task Form Fields ... */}
           <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-bold mb-1 dark:text-gray-300">Título da Tarefa</label>
@@ -745,7 +792,9 @@ export default function App() {
                 </select>
           </div>
 
+          {/* Subtasks Section */}
           <div className="bg-gray-50 dark:bg-[#0f172a] p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+              {/* ... Subtask UI same as before ... */}
               <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 flex items-center justify-between">
                   <span>Atividades da Tarefa</span>
                   <span className="text-xs font-normal text-gray-500">Defina responsável e prazo para cada etapa</span>
@@ -818,6 +867,7 @@ export default function App() {
               </div>
           </div>
 
+          {/* Auto Calculated Summary */}
           <div className="flex items-center justify-between p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-100 dark:border-indigo-800">
               <div className="flex items-center gap-2 text-indigo-800 dark:text-indigo-300 font-bold text-sm">
                   <Clock size={16} /> Total Esforço: {newTaskSubtasks.reduce((acc, curr) => acc + (curr.duration || 0), 0)} dias
@@ -836,6 +886,7 @@ export default function App() {
         </form>
       </Modal>
 
+      {/* New Project Modal (Fixed Colors) */}
       <Modal isOpen={isNewProjectModalOpen} onClose={() => setIsNewProjectModalOpen(false)} title="Novo Projeto" maxWidth="max-w-md">
         <form onSubmit={handleCreateProject} className="space-y-4">
             <div>
