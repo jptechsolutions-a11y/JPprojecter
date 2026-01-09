@@ -65,10 +65,11 @@ const mapTask = (t: any): Task => ({
 });
 
 // --- Constants ---
+// UUIDs válidos fictícios para evitar erro de sintaxe UUID no Postgres
 const FALLBACK_COLUMNS = [
-  { id: 'col-1', title: 'A Fazer', color: 'bg-gray-100 dark:bg-gray-800' },
-  { id: 'col-2', title: 'Em Progresso', color: 'bg-blue-100 dark:bg-blue-900/30' },
-  { id: 'col-3', title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30' }
+  { id: '00000000-0000-0000-0000-000000000001', title: 'A Fazer', color: 'bg-gray-100 dark:bg-gray-800' },
+  { id: '00000000-0000-0000-0000-000000000002', title: 'Em Progresso', color: 'bg-blue-100 dark:bg-blue-900/30' },
+  { id: '00000000-0000-0000-0000-000000000003', title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30' }
 ];
 
 export const api = {
@@ -121,13 +122,27 @@ export const api = {
           supabase.from('team_roles').select('*').eq('team_id', teamId)
       ]);
 
-      // Fetch Columns separately to handle missing table (400/404) without crashing the app
+      // Fetch Columns separately to handle missing column/table without crashing
       let mappedColumns: Column[] = [];
       try {
-          const { data: colsData, error: colsErr } = await supabase.from('columns').select('*').order('created_at', { ascending: true });
+          // Attempt 1: Try with 'created_at' sort (preferred)
+          let { data: colsData, error: colsErr } = await supabase.from('columns').select('*').order('created_at', { ascending: true });
           
+          // Attempt 2: If 'created_at' does not exist (Error 400), try without sorting
+          if (colsErr && colsErr.code === '42703') { // 42703 is undefined_column in Postgres
+             console.warn("Columns sort failed (missing created_at), retrying without sort...");
+             const retry = await supabase.from('columns').select('*');
+             colsData = retry.data;
+             colsErr = retry.error;
+          } else if (colsErr) {
+             // Generic retry
+             const retry = await supabase.from('columns').select('*');
+             colsData = retry.data;
+             colsErr = retry.error;
+          }
+
           if (colsErr) {
-              console.warn("Columns fetch failed (using fallback):", colsErr.message);
+              console.warn("Columns fetch failed completely:", colsErr.message);
               mappedColumns = FALLBACK_COLUMNS;
           } else if (colsData && colsData.length > 0) {
               mappedColumns = colsData.map((c:any) => ({ id: c.id, title: c.title, color: c.color }));
@@ -186,6 +201,8 @@ export const api = {
       const randomColor = colors[Math.floor(Math.random() * colors.length)];
       
       try {
+          // Tenta criar. Se falhar (ex: created_at missing), o Supabase pode dar erro se não passar todas required.
+          // created_at tem default, então deve ir bem.
           const { data, error } = await supabase.from('columns').insert({ title, color: randomColor }).select().single();
           if (data) {
               return { id: data.id, title: data.title, color: data.color };
