@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { User, Team, TeamRole } from '../types';
 import { Avatar } from './Avatar';
-import { Mail, Copy, RefreshCw, UserPlus, Check, Hash, Link as LinkIcon, Shield, Trash2, MoreVertical, Plus, Send, Edit2, Camera, Code, UserCog, Loader2, ShieldCheck, Settings, AlertTriangle } from 'lucide-react';
+import { Mail, Copy, RefreshCw, UserPlus, Check, Hash, Link as LinkIcon, Shield, Trash2, MoreVertical, Plus, Send, Edit2, Camera, Code, UserCog, Loader2, ShieldCheck, Settings, AlertTriangle, Eye, Briefcase, MapPin, X } from 'lucide-react';
 import { Modal } from './Modal';
 import { api } from '../services/dataService';
 
@@ -22,6 +22,9 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentUser, currentT
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [isMemberEditModalOpen, setIsMemberEditModalOpen] = useState(false);
     const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+    
+    // Viewing Profile State
+    const [viewingMember, setViewingMember] = useState<User | null>(null);
 
     // Member Editing
     const [selectedMember, setSelectedMember] = useState<User | null>(null);
@@ -228,27 +231,59 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentUser, currentT
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {teamMembers.map(member => (
                         <div key={member.id} className="bg-white dark:bg-[#1e293b] rounded-2xl border border-gray-100 dark:border-gray-700 p-6 flex flex-col items-center text-center relative group hover:shadow-xl transition-all h-full">
-                            {isAdmin && (
+                            <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button 
-                                    onClick={() => handleEditMember(member)}
-                                    className="absolute top-4 right-4 text-gray-400 hover:text-indigo-500 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors opacity-0 group-hover:opacity-100"
+                                    onClick={() => setViewingMember(member)}
+                                    className="text-gray-400 hover:text-[#00b4d8] p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                    title="Ver Perfil"
                                 >
-                                    <UserCog size={18} />
+                                    <Eye size={18} />
                                 </button>
-                            )}
+                                {isAdmin && (
+                                    <button 
+                                        onClick={() => handleEditMember(member)}
+                                        className="text-gray-400 hover:text-indigo-500 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                        title="Gerenciar Cargo"
+                                    >
+                                        <UserCog size={18} />
+                                    </button>
+                                )}
+                            </div>
                             
-                            <div className="mb-4 relative">
+                            <div className="mb-4 relative cursor-pointer" onClick={() => setViewingMember(member)}>
                                 <Avatar src={member.avatar} alt={member.name} size="xl" className="shadow-md border-4 border-white dark:border-[#1e293b]" />
                             </div>
                             
-                            <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-1">{member.name}</h3>
-                            <div className="mb-6">
+                            <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-1 cursor-pointer hover:text-[#00b4d8] transition-colors" onClick={() => setViewingMember(member)}>{member.name}</h3>
+                            <div className="mb-3">
                                 <span className="text-xs font-bold px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
                                     {member.role}
                                 </span>
                             </div>
+
+                            {/* Skills Preview on Card */}
+                            {member.skills && member.skills.length > 0 && (
+                                <div className="flex flex-wrap justify-center gap-1.5 mb-4 px-2">
+                                    {member.skills.slice(0, 3).map((skill, i) => (
+                                        <span key={i} className="text-[10px] px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 rounded border border-indigo-100 dark:border-indigo-800 truncate max-w-[80px]">
+                                            {skill}
+                                        </span>
+                                    ))}
+                                    {member.skills.length > 3 && (
+                                        <span className="text-[10px] px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-500 rounded border border-gray-200 dark:border-gray-700">
+                                            +{member.skills.length - 3}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
                             
                             <div className="w-full pt-5 border-t border-gray-100 dark:border-gray-700 mt-auto">
+                                 <button 
+                                    onClick={() => setViewingMember(member)}
+                                    className="w-full py-2 rounded-lg bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm font-bold text-gray-600 dark:text-gray-300 transition-colors mb-2"
+                                 >
+                                     Ver Perfil Completo
+                                 </button>
                                  <div className="flex items-center justify-center gap-2 text-gray-500 dark:text-gray-400">
                                      <Mail size={14} className="shrink-0 text-[#00b4d8]" /> 
                                      <span className="text-[12px] font-medium break-all select-all">{member.email}</span>
@@ -306,7 +341,78 @@ export const TeamView: React.FC<TeamViewProps> = ({ users, currentUser, currentT
                 )
             )}
 
-            {/* Member Edit Modal */}
+            {/* Member View Profile Modal */}
+            <Modal isOpen={!!viewingMember} onClose={() => setViewingMember(null)} title="Perfil do Membro" maxWidth="max-w-2xl">
+                {viewingMember && (
+                    <div className="space-y-6">
+                        {/* Cover & Header */}
+                        <div className="relative">
+                            <div className="h-32 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 overflow-hidden">
+                                {viewingMember.coverImage && <img src={viewingMember.coverImage} alt="Capa" className="w-full h-full object-cover" />}
+                            </div>
+                            <div className="absolute -bottom-10 left-6">
+                                <Avatar src={viewingMember.avatar} alt={viewingMember.name} size="xl" className="border-4 border-white dark:border-[#1e293b] shadow-lg" />
+                            </div>
+                        </div>
+                        
+                        <div className="pt-10 px-2 flex justify-between items-start">
+                            <div>
+                                <h2 className="text-2xl font-bold text-gray-800 dark:text-white">{viewingMember.name}</h2>
+                                <p className="text-gray-500 dark:text-gray-400 font-medium">{viewingMember.role} @ {currentTeam.name}</p>
+                            </div>
+                            {isAdmin && (
+                                <button onClick={() => { setViewingMember(null); handleEditMember(viewingMember); }} className="text-xs font-bold text-indigo-600 hover:underline">
+                                    Editar Permissões
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Bio Section */}
+                        <div className="bg-gray-50 dark:bg-[#0f172a] p-4 rounded-xl border border-gray-100 dark:border-gray-700">
+                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Biografia</h4>
+                            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
+                                {viewingMember.bio || "Este membro ainda não adicionou uma biografia."}
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Details */}
+                            <div className="bg-white dark:bg-[#1e293b] p-4 rounded-xl border border-gray-200 dark:border-gray-700 space-y-3">
+                                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Informações</h4>
+                                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                                    <Mail size={16} className="text-[#00b4d8]" /> {viewingMember.email}
+                                </div>
+                                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                                    <Briefcase size={16} className="text-[#00b4d8]" /> {viewingMember.role}
+                                </div>
+                                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                                    <MapPin size={16} className="text-[#00b4d8]" /> {viewingMember.portfolio || "Localização não definida"}
+                                </div>
+                            </div>
+
+                            {/* Skills */}
+                            <div className="bg-white dark:bg-[#1e293b] p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+                                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                    <Code size={14} /> Competências
+                                </h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {viewingMember.skills && viewingMember.skills.length > 0 ? (
+                                        viewingMember.skills.map((skill, i) => (
+                                            <span key={i} className="px-3 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full text-xs font-medium border border-indigo-100 dark:border-indigo-800">
+                                                {skill}
+                                            </span>
+                                        ))
+                                    ) : (
+                                        <span className="text-xs text-gray-400 italic">Nenhuma skill listada.</span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </Modal>
+
+            {/* Member Edit Modal (Existing logic preserved) */}
             <Modal isOpen={isMemberEditModalOpen} onClose={() => setIsMemberEditModalOpen(false)} title="Gerenciar Membro" maxWidth="max-w-md">
                 {selectedMember && (
                     <div className="space-y-6">
