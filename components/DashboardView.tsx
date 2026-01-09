@@ -13,16 +13,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ tasks, users }) =>
   // --- Cálculos de KPIs ---
   const totalTasks = tasks.length;
   
-  // Status Counts
+  // Status Counts - Padronizado com o App
   const completedTasks = tasks.filter(t => t.status === 'Concluído').length;
   const inProgressTasks = tasks.filter(t => t.status === 'Em Progresso').length;
   const reviewTasks = tasks.filter(t => t.status === 'Em Revisão').length;
   const pausedTasks = tasks.filter(t => t.status === 'Em Pausa').length;
+  const canceledTasks = tasks.filter(t => t.status === 'Cancelado').length;
   
   // Computed Metrics
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   
-  // Overdue Logic
+  // Lógica de Atraso (Overdue)
   const today = new Date();
   today.setHours(0,0,0,0);
   const overdueTasks = tasks.filter(t => {
@@ -32,7 +33,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ tasks, users }) =>
       return due < today;
   }).length;
 
-  // Tasks per User
+  // Carga de Trabalho por Membro
   const tasksByUser = users.map(u => {
       const count = tasks.filter(t => t.assigneeId === u.id && t.status !== 'Concluído' && t.status !== 'Cancelado').length;
       return { user: u, count };
@@ -43,7 +44,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ tasks, users }) =>
       
       <div className="flex items-center gap-3 mb-2">
           <BarChart3 className="text-[#00b4d8]" size={28} />
-          <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Visão Geral do Time</h2>
+          <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Indicadores de Performance</h2>
       </div>
 
       {/* KPI Cards Grid */}
@@ -54,7 +55,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ tasks, users }) =>
                <TrendingUp size={60} />
            </div>
            <div className="flex justify-between items-start relative z-10">
-              <span className="text-gray-500 dark:text-gray-400 font-bold text-xs uppercase tracking-wider">Conclusão</span>
+              <span className="text-gray-500 dark:text-gray-400 font-bold text-xs uppercase tracking-wider">Conclusão Geral</span>
               <div className="p-2 bg-green-50 dark:bg-green-900/20 text-green-600 rounded-lg">
                 <TrendingUp size={18} />
               </div>
@@ -66,7 +67,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ tasks, users }) =>
            <div className="absolute bottom-0 left-0 h-1 bg-green-500 transition-all duration-1000" style={{width: `${completionRate}%`}}></div>
         </div>
 
-        {/* 2. Em Progresso */}
+        {/* 2. Em Execução */}
         <div className="bg-white dark:bg-[#1e293b] p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col justify-between h-32">
            <div className="flex justify-between items-start">
               <span className="text-gray-500 dark:text-gray-400 font-bold text-xs uppercase tracking-wider">Em Execução</span>
@@ -76,11 +77,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ tasks, users }) =>
            </div>
            <div>
              <span className="text-3xl font-bold text-gray-800 dark:text-white">{inProgressTasks}</span>
-             <span className="text-[10px] text-gray-400 block mt-1">tarefas ativas agora</span>
+             <span className="text-[10px] text-gray-400 block mt-1">tarefas ativas</span>
            </div>
         </div>
 
-        {/* 3. Em Revisão (Quality Bottleneck) */}
+        {/* 3. Em Revisão (Gargalo de Qualidade) */}
         <div className="bg-white dark:bg-[#1e293b] p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col justify-between h-32">
            <div className="flex justify-between items-start">
               <span className="text-gray-500 dark:text-gray-400 font-bold text-xs uppercase tracking-wider">Em Revisão</span>
@@ -94,7 +95,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ tasks, users }) =>
            </div>
         </div>
 
-        {/* 4. Atrasadas (Risk) */}
+        {/* 4. Risco / Atraso */}
         <div className="bg-white dark:bg-[#1e293b] p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col justify-between h-32 border-l-4 border-l-red-500">
            <div className="flex justify-between items-start">
               <span className="text-red-500 font-bold text-xs uppercase tracking-wider">Em Atraso</span>
@@ -108,17 +109,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ tasks, users }) =>
            </div>
         </div>
 
-        {/* 5. Entregues */}
+        {/* 5. Entregas */}
         <div className="bg-white dark:bg-[#1e293b] p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col justify-between h-32">
            <div className="flex justify-between items-start">
-              <span className="text-gray-500 dark:text-gray-400 font-bold text-xs uppercase tracking-wider">Concluídas</span>
+              <span className="text-gray-500 dark:text-gray-400 font-bold text-xs uppercase tracking-wider">Entregas</span>
               <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 rounded-lg">
                 <CheckCircle size={18} />
               </div>
            </div>
            <div>
              <span className="text-3xl font-bold text-gray-800 dark:text-white">{completedTasks}</span>
-             <span className="text-[10px] text-gray-400 block mt-1">entregas totais</span>
+             <span className="text-[10px] text-gray-400 block mt-1">finalizadas com sucesso</span>
            </div>
         </div>
       </div>
@@ -127,7 +128,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ tasks, users }) =>
         {/* Status Distribution */}
         <div className="lg:col-span-2 bg-white dark:bg-[#1e293b] p-6 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700">
           <h3 className="font-bold text-gray-800 dark:text-white mb-6 flex items-center gap-2">
-             <PieChart size={20} className="text-gray-400" /> Distribuição de Status
+             <PieChart size={20} className="text-gray-400" /> Pipeline de Tarefas
           </h3>
           <div className="space-y-4">
             {[
@@ -136,10 +137,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ tasks, users }) =>
                 { label: 'Em Revisão', count: reviewTasks, color: 'bg-purple-500', text: 'text-purple-600 dark:text-purple-400' },
                 { label: 'Em Pausa', count: pausedTasks, color: 'bg-orange-400', text: 'text-orange-600 dark:text-orange-400' },
                 { label: 'Concluído', count: completedTasks, color: 'bg-green-500', text: 'text-green-600 dark:text-green-400' },
-                { label: 'Cancelado', count: tasks.filter(t => t.status === 'Cancelado').length, color: 'bg-red-500', text: 'text-red-600 dark:text-red-400' }
+                { label: 'Cancelado', count: canceledTasks, color: 'bg-red-500', text: 'text-red-600 dark:text-red-400' }
             ].map((stat, idx) => {
                 const percentage = totalTasks > 0 ? (stat.count / totalTasks) * 100 : 0;
-                if (stat.count === 0 && totalTasks > 0) return null; // Hide empty if we have tasks
+                if (stat.count === 0 && totalTasks > 0) return null; 
 
                 return (
                   <div key={idx} className="flex items-center gap-4 group">
@@ -172,7 +173,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ tasks, users }) =>
                            </div>
                        </div>
                        <div className={`px-3 py-1 rounded-lg text-xs font-bold ${count > 5 ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' : count > 2 ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>
-                           {count} Tarefas
+                           {count} Tasks
                        </div>
                    </div>
                ))}
@@ -181,7 +182,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ tasks, users }) =>
            
            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
                <p className="text-[10px] text-gray-400 text-center flex items-center justify-center gap-1">
-                   <AlertCircle size={10} /> Conta apenas tarefas não concluídas.
+                   <AlertCircle size={10} /> Conta apenas tarefas pendentes.
                </p>
            </div>
         </div>
