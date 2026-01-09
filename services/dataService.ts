@@ -66,8 +66,9 @@ const mapTask = (t: any): Task => ({
 });
 
 // --- Constants ---
+const DEFAULT_COLUMN_COLOR = 'bg-gray-100 dark:bg-gray-800';
 const FALLBACK_COLUMNS = [
-  { id: '00000000-0000-0000-0000-000000000001', title: 'Tarefas de Entrada', color: 'bg-gray-100 dark:bg-gray-800' },
+  { id: '00000000-0000-0000-0000-000000000001', title: 'Tarefas de Entrada', color: DEFAULT_COLUMN_COLOR },
   { id: '00000000-0000-0000-0000-000000000002', title: 'Em Andamento', color: 'bg-blue-100 dark:bg-blue-900/30' },
   { id: '00000000-0000-0000-0000-000000000003', title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30' }
 ];
@@ -140,12 +141,17 @@ export const api = {
           }
 
           if (colsData && colsData.length > 0) {
-              mappedColumns = colsData.map((c:any) => ({ id: c.id, title: c.title, color: c.color, teamId: c.team_id }));
+              mappedColumns = colsData.map((c:any) => ({ 
+                  id: c.id, 
+                  title: c.title, 
+                  color: c.color || DEFAULT_COLUMN_COLOR, // FALLBACK IMPORTANTE PARA CORES NULAS
+                  teamId: c.team_id 
+              }));
           } else if (!colsErr) {
               // If no columns exist for this team (and no error), create defaults AUTOMATICALLY
               console.log("No columns found for team, creating defaults...");
               const defaultCols = [
-                  { title: 'Tarefas de Entrada', color: 'bg-gray-100 dark:bg-gray-800', team_id: teamId },
+                  { title: 'Tarefas de Entrada', color: DEFAULT_COLUMN_COLOR, team_id: teamId },
                   { title: 'Em Andamento', color: 'bg-blue-100 dark:bg-blue-900/30', team_id: teamId },
                   { title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30', team_id: teamId }
               ];
@@ -241,8 +247,15 @@ export const api = {
   updateColumn: async (columnId: string, updates: { title?: string, color?: string }) => {
       try {
           const { error } = await supabase.from('columns').update(updates).eq('id', columnId);
-          return !error;
-      } catch (e) { return false; }
+          if (error) {
+              console.error("Supabase Update Error:", error);
+              return false;
+          }
+          return true;
+      } catch (e) { 
+          console.error("Exception updating column:", e);
+          return false; 
+      }
   },
 
   deleteColumn: async (columnId: string) => {

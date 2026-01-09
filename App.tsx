@@ -319,10 +319,19 @@ export default function App() {
   };
 
   const handleUpdateColumnColor = async (columnId: string, colorClass: string) => {
+      // 1. Optimistic UI Update (Immediate)
+      const oldColumns = [...columns];
+      setColumns(columns.map(c => c.id === columnId ? { ...c, color: colorClass } : c));
+      setActiveColorMenuColumnId(null);
+
+      // 2. API Update
       const success = await api.updateColumn(columnId, { color: colorClass });
-      if (success) {
-          setColumns(columns.map(c => c.id === columnId ? { ...c, color: colorClass } : c));
-          setActiveColorMenuColumnId(null);
+      
+      // 3. Rollback if failed
+      if (!success) {
+          console.error("Failed to update column color");
+          setColumns(oldColumns);
+          alert("Erro ao salvar cor. Verifique se a coluna 'color' foi criada no banco de dados.");
       }
   };
 
