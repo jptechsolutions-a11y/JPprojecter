@@ -944,8 +944,8 @@ export default function App() {
 
       {/* ... Modals (New Task, New Project) keep same ... */}
       {/* Task Modal */}
-      <Modal isOpen={!!selectedTask} onClose={() => setSelectedTask(null)} title="Detalhes da Tarefa">
-        {selectedTask && currentUser && <TaskDetail task={selectedTask} users={users} columns={columns} currentUser={currentUser} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} onRequestApproval={() => {}} />}
+      <Modal isOpen={!!selectedTask} onClose={() => setSelectedTask(null)} title="Detalhes da Tarefa" maxWidth="max-w-5xl">
+        {selectedTask && currentUser && <TaskDetail task={selectedTask} taskGroups={currentGroups} users={users} columns={columns} currentUser={currentUser} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} onRequestApproval={() => {}} />}
       </Modal>
 
       {/* New Task Modal Expanded */}

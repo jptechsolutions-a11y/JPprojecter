@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Task, User, Priority, Status, Subtask, Attachment, Comment, Column, ApprovalStatus, TaskTimelineEntry } from '../types';
-import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2, AlertTriangle, Layout, PlayCircle, CheckCircle2, PauseCircle, XCircle, Info, Image as ImageIcon, Eye, Download, Save, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Task, User, Priority, Status, Subtask, Attachment, Comment, Column, ApprovalStatus, TaskTimelineEntry, TaskGroup } from '../types';
+import { Calendar, Tag, User as UserIcon, CheckSquare, Wand2, Trash2, Plus, X, Paperclip, FileText, Send, MessageSquare, Clock, Users as UsersIcon, Shield, ShieldCheck, ShieldAlert, Check, Ban, ChevronDown, Loader2, AlertTriangle, Layout, PlayCircle, CheckCircle2, PauseCircle, XCircle, Info, Image as ImageIcon, Eye, Download, Save, ThumbsUp, ThumbsDown, Folder } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { generateSubtasks, generateTaskDescription } from '../services/geminiService';
 import { api } from '../services/dataService';
@@ -10,6 +10,7 @@ import { Modal } from './Modal';
 interface TaskDetailProps {
   task: Task;
   users: User[];
+  taskGroups: TaskGroup[]; // Add taskGroups to props
   columns: Column[];
   currentUser: User;
   onUpdate: (updatedTask: Task) => void;
@@ -17,7 +18,7 @@ interface TaskDetailProps {
   onRequestApproval: (taskId: string, approverId: string) => void;
 }
 
-export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, currentUser, onUpdate, onDelete, onRequestApproval }) => {
+export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, taskGroups, columns, currentUser, onUpdate, onDelete, onRequestApproval }) => {
   const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
   const [isGeneratingSubs, setIsGeneratingSubs] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -42,9 +43,9 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
     const diffTime = due.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    if (diffDays < 0) return { label: `Atrasado ${Math.abs(diffDays)} dias`, color: 'bg-red-100 text-red-700 border-red-200' };
-    if (diffDays === 0) return { label: 'Entrega Hoje', color: 'bg-orange-100 text-orange-700 border-orange-200' };
-    if (diffDays <= 2) return { label: 'Prazo Próximo', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' };
+    if (diffDays < 0) return { label: `Atrasado ${Math.abs(diffDays)} dias`, color: 'text-red-600' };
+    if (diffDays === 0) return { label: 'Entrega Hoje', color: 'text-orange-600' };
+    if (diffDays <= 2) return { label: 'Prazo Próximo', color: 'text-yellow-600' };
     return null;
   };
 
@@ -99,12 +100,8 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
 
   // --- GENERIC FIELD UPDATER WITH LOGGING ---
   const handleFieldUpdate = async (field: keyof Task, value: any, logMessage?: string) => {
-      // Allow re-selecting same value if it's toggle logic (supportIds handled in caller)
-      // For assignee, we want to allow deselecting (passing null) even if task[field] is undefined
-      
       const updatedTask = { ...task, [field]: value };
       
-      // Calculate automated log message if not provided
       let finalLogMessage = logMessage;
       if (!finalLogMessage) {
           if (field === 'title') finalLogMessage = `Título alterado para "${value}"`;
@@ -112,6 +109,10 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
           else if (field === 'priority') finalLogMessage = `Prioridade alterada para ${value}`;
           else if (field === 'startDate') finalLogMessage = `Data de início alterada para ${new Date(value).toLocaleDateString()}`;
           else if (field === 'dueDate') finalLogMessage = `Data de entrega alterada para ${new Date(value).toLocaleDateString()}`;
+          else if (field === 'groupId') {
+              const g = taskGroups.find(g => g.id === value);
+              finalLogMessage = `Tarefa movida para o projeto: ${g ? g.title : 'Desconhecido'}`;
+          }
           else if (field === 'assigneeId') {
               if (value) {
                 const u = users.find(u => u.id === value);
@@ -131,7 +132,6 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
       if (finalLogMessage) {
           await api.logTimelineEvent(task.id, 'info', undefined, undefined, finalLogMessage);
           
-          // Add local timeline entry for immediate feedback
           const newEntry: TaskTimelineEntry = {
               id: crypto.randomUUID(),
               taskId: task.id,
@@ -145,11 +145,9 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
       }
   };
 
-  // Handle Description Save
   const handleSaveDescription = async () => {
       setIsSavingDesc(true);
       await handleFieldUpdate('description', task.description);
-      // Simulate network delay for UX if needed, or just finish
       setTimeout(() => setIsSavingDesc(false), 500);
   };
 
@@ -239,7 +237,6 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
     if (createdSubtasks.length > 0) {
         const updatedSubtasks = [...task.subtasks, ...createdSubtasks];
         onUpdate({ ...task, subtasks: updatedSubtasks }); 
-        // Adding subtasks logs internally in api.createSubtask, so we just refresh UI
     }
     setIsGeneratingSubs(false);
   };
@@ -321,7 +318,6 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
         const completed = updatedSubtasks.filter(s => s.completed).length;
         const newProgress = total === 0 ? 0 : Math.round((completed / total) * 100);
 
-        // Timeline log handled in api.createSubtask, but let's refresh UI timeline
         const newTimelineEntry: TaskTimelineEntry = {
              id: crypto.randomUUID(),
              taskId: task.id,
@@ -344,7 +340,6 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
       const completed = updatedSubtasks.filter(s => s.completed).length;
       const newProgress = total === 0 ? 0 : Math.round((completed / total) * 100);
 
-      // Log deletion
       await api.logTimelineEvent(task.id, 'info', undefined, undefined, `Atividade excluída: ${subtaskTitle}`);
       
       onUpdate({ ...task, subtasks: updatedSubtasks, progress: newProgress });
@@ -360,7 +355,6 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
           st.id === subtaskId ? { ...st, [field]: value } : st
       );
       
-      // Determine if we need to log this specific change immediately to timeline
       let logMsg = '';
       if (field === 'assigneeId') {
            const u = users.find(u => u.id === value);
@@ -374,7 +368,6 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
 
       if (logMsg) {
            await api.logTimelineEvent(task.id, 'subtask_update', undefined, undefined, logMsg);
-           // Refresh local timeline
            const newEntry: TaskTimelineEntry = {
                id: crypto.randomUUID(),
                taskId: task.id,
@@ -388,7 +381,6 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
       }
   };
 
-  // --- Attachments ---
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -432,470 +424,308 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
   };
 
   return (
-    <div className="space-y-8 animate-fade-in pb-4">
+    <div className="animate-fade-in text-gray-800 dark:text-gray-100">
       
-      {/* 1. Header & Controls */}
-      <div className="flex flex-col gap-4 border-b border-gray-100 dark:border-gray-800 pb-6">
-          <div className="flex justify-between items-start">
-             {deadlineAlert && (
-                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold ${deadlineAlert.color}`}>
-                      <AlertTriangle size={14} />
-                      {deadlineAlert.label}
-                  </div>
-              )}
-              {!deadlineAlert && <div></div>} {/* Spacer */}
-
-              <div className="flex items-center gap-3">
-                  <span className="text-xs font-bold text-gray-500 uppercase">Progresso (Auto)</span>
-                  <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 px-3 py-1 rounded-lg border dark:border-gray-700">
-                       <div className="w-24 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                           <div className="h-full bg-indigo-600 transition-all duration-500" style={{width: `${task.progress}%`}}></div>
-                       </div>
-                      <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400 w-8 text-right">{task.progress}%</span>
-                  </div>
+      {/* 1. Header Area: Title & Meta Bar */}
+      <div className="border-b border-gray-100 dark:border-gray-700 pb-4 mb-4">
+          <input
+              type="text" 
+              value={task.title}
+              onBlur={(e) => handleFieldUpdate('title', e.target.value)}
+              onChange={(e) => onUpdate({...task, title: e.target.value})}
+              className="text-2xl font-bold bg-transparent border-none outline-none focus:ring-0 w-full mb-3 text-gray-900 dark:text-white"
+              placeholder="Título da Tarefa"
+          />
+          
+          <div className="flex flex-wrap items-center gap-3">
+              {/* Status Select */}
+              <div className="relative group">
+                  <select
+                    value={task.status}
+                    onChange={(e) => handleStatusChange(e.target.value)}
+                    className={`appearance-none pl-3 pr-8 py-1.5 rounded-md text-xs font-bold uppercase tracking-wide cursor-pointer outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500
+                        ${task.status === 'Concluído' ? 'bg-green-100 text-green-700' :
+                          task.status === 'Cancelado' ? 'bg-red-100 text-red-700' :
+                          task.status === 'Em Pausa' ? 'bg-orange-100 text-orange-700' :
+                          task.status === 'Em Progresso' ? 'bg-blue-100 text-blue-700' :
+                          'bg-gray-100 text-gray-600'
+                        }`}
+                  >
+                    <option value="A Fazer">A Fazer</option>
+                    <option value="Em Progresso">Em Progresso</option>
+                    <option value="Em Revisão">Em Revisão</option>
+                    <option value="Em Pausa">Em Pausa</option>
+                    <option value="Concluído">Concluído</option>
+                    <option value="Cancelado">Cancelado</option>
+                  </select>
+                  <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-50" />
               </div>
-          </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-              <input
-                  type="text" 
-                  value={task.title}
-                  onBlur={(e) => handleFieldUpdate('title', e.target.value)} // Log only on blur
-                  onChange={(e) => onUpdate({...task, title: e.target.value})} // Local update for typing
-                  className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white border-b-2 border-transparent hover:border-gray-200 focus:border-indigo-500 focus:outline-none bg-transparent transition-all w-full leading-tight"
-                  placeholder="Título da Tarefa"
-              />
-              
-              <div className="flex gap-2 flex-wrap shrink-0">
-                  {/* Custom Status Select to handle logic */}
-                  <div className="relative">
-                      <select
-                        value={task.status}
-                        onChange={(e) => handleStatusChange(e.target.value)}
-                        className={`px-3 py-1.5 rounded-lg border text-sm font-bold outline-none appearance-none pr-8 cursor-pointer
-                            ${task.status === 'Concluído' ? 'bg-green-100 text-green-700 border-green-200' :
-                              task.status === 'Cancelado' ? 'bg-red-100 text-red-700 border-red-200' :
-                              task.status === 'Em Pausa' ? 'bg-orange-100 text-orange-700 border-orange-200' :
-                              task.status === 'Em Progresso' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                              task.status === 'Em Revisão' ? 'bg-purple-100 text-purple-700 border-purple-200' :
-                              'bg-gray-100 text-gray-700 border-gray-200'
-                            }`}
-                      >
-                        <option value="A Fazer">A Fazer</option>
-                        <option value="Em Progresso">Em Progresso</option>
-                        <option value="Em Revisão">Em Revisão</option>
-                        <option value="Em Pausa">Em Pausa</option>
-                        <option value="Concluído">Concluído</option>
-                        <option value="Cancelado">Cancelado</option>
-                      </select>
-                      <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-current opacity-70 pointer-events-none" />
-                  </div>
-                  
+              {/* Priority Select */}
+              <div className="relative group">
                   <select
                     value={task.priority}
                     onChange={(e) => handleFieldUpdate('priority', e.target.value)}
-                    className={`px-3 py-1.5 rounded-lg border text-sm font-bold outline-none
-                      ${task.priority === 'Alta' ? 'bg-red-50 text-red-700 border-red-200' : 
-                        task.priority === 'Média' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 
-                        'bg-green-50 text-green-700 border-green-200'}`}
+                    className={`appearance-none pl-3 pr-8 py-1.5 rounded-md text-xs font-bold uppercase tracking-wide cursor-pointer outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500
+                      ${task.priority === 'Alta' ? 'bg-red-50 text-red-700 border border-red-100' : 
+                        task.priority === 'Média' ? 'bg-yellow-50 text-yellow-700 border border-yellow-100' : 
+                        'bg-teal-50 text-teal-700 border border-teal-100'}`}
                   >
                     {priorities.map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
+                  <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-50" />
               </div>
-          </div>
-      </div>
 
-      {/* 2. People & Approval Section */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Members Card */}
-          <div className="md:col-span-2 bg-gray-50 dark:bg-[#1b263b]/50 p-4 rounded-xl border border-gray-100 dark:border-gray-700 grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div>
-                  <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase mb-3">
-                      <UserIcon size={14}/> Responsável Principal
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {users.map(u => (
-                        <button 
-                            key={u.id} 
-                            onClick={() => handleFieldUpdate('assigneeId', task.assigneeId === u.id ? null : u.id)} 
-                            className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all hover:bg-white dark:hover:bg-[#1e293b] ${task.assigneeId === u.id ? 'bg-white dark:bg-[#1e293b] border-indigo-500 ring-1 ring-indigo-500 shadow-sm' : 'border-transparent hover:border-gray-200 dark:hover:border-gray-600'}`}
-                        >
-                            <Avatar src={u.avatar} alt={u.name} size="sm" />
-                            <span className={`text-sm ${task.assigneeId === u.id ? 'font-bold text-indigo-700 dark:text-indigo-300' : 'text-gray-600 dark:text-gray-300'}`}>{u.name}</span>
-                            {task.assigneeId === u.id && <Check size={14} className="text-indigo-500 ml-1" />}
-                        </button>
-                    ))}
+              {/* Deadline Alert */}
+              {deadlineAlert && (
+                  <div className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold ${deadlineAlert.color} bg-opacity-10 bg-current`}>
+                      <AlertTriangle size={12} /> {deadlineAlert.label}
                   </div>
-              </div>
-
-              <div>
-                  <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase mb-3">
-                      <UsersIcon size={14}/> Equipe de Apoio
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                      {users.map(u => {
-                          const isSelected = task.supportIds?.includes(u.id);
-                          return (
-                            <button key={u.id} onClick={() => {
-                                const current = task.supportIds || [];
-                                const next = current.includes(u.id) ? current.filter(id => id !== u.id) : [...current, u.id];
-                                handleFieldUpdate('supportIds', next, isSelected ? `Removeu ${u.name} do apoio` : `Adicionou ${u.name} ao apoio`);
-                            }} className={`relative`}>
-                                 <Avatar src={u.avatar} alt={u.name} size="sm" className={`transition-all ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-[#021221]' : 'opacity-50 hover:opacity-100'}`} />
-                                 {isSelected && <div className="absolute -top-1 -right-1 bg-indigo-500 w-3 h-3 rounded-full border-2 border-white dark:border-[#021221]"></div>}
-                            </button>
-                          );
-                      })}
-                  </div>
-              </div>
-          </div>
-
-          {/* Approval Card */}
-          <div className={`p-4 rounded-xl border ${task.approvalStatus === 'approved' ? 'bg-green-50 border-green-200 dark:bg-green-900/10 dark:border-green-800' : task.approvalStatus === 'rejected' ? 'bg-red-50 border-red-200 dark:bg-red-900/10 dark:border-red-800' : 'bg-gray-50 dark:bg-[#1b263b]/50 border-gray-100 dark:border-gray-700'}`}>
-              <div className="flex justify-between items-center mb-3">
-                  <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase">
-                      <ShieldCheck size={14}/> Gestão de Aprovação
-                  </label>
-                  <div className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
-                      task.approvalStatus === 'approved' ? 'text-green-600 bg-green-100' : 
-                      task.approvalStatus === 'rejected' ? 'text-red-600 bg-red-100' : 
-                      'text-gray-500 bg-gray-200'
-                  }`}>
-                      {task.approvalStatus === 'approved' ? 'Aprovado' : task.approvalStatus === 'rejected' ? 'Rejeitado' : 'Pendente'}
-                  </div>
-              </div>
-
-              <div className="mb-4">
-                  <select
-                      value={task.approverId || ''}
-                      onChange={(e) => handleApproverChange(e.target.value)}
-                      className="w-full text-xs bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-2 outline-none focus:ring-1 focus:ring-indigo-500"
-                  >
-                      <option value="">-- Selecione o Aprovador --</option>
-                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-              </div>
-
-              {task.approverId && task.approverId === currentUser.id ? (
-                  <div className="flex gap-2">
-                      <button 
-                          onClick={() => handleApprovalAction('approved')}
-                          className="flex-1 bg-green-600 hover:bg-green-700 text-white py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
-                      >
-                          <ThumbsUp size={12} /> Aprovar
-                      </button>
-                      <button 
-                          onClick={() => handleApprovalAction('rejected')}
-                          className="flex-1 bg-red-600 hover:bg-red-700 text-white py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors"
-                      >
-                          <ThumbsDown size={12} /> Rejeitar
-                      </button>
-                  </div>
-              ) : (
-                  task.approverId && (
-                      <p className="text-[10px] text-gray-400 text-center italic mt-2">
-                          Aguardando análise de {users.find(u => u.id === task.approverId)?.name || 'Aprovador'}
-                      </p>
-                  )
               )}
-          </div>
-      </div>
 
-      {/* 3. Description Section */}
-      <div className="space-y-3">
-          <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200">
-                  <Layout size={16} /> Descrição
-              </label>
-              <div className="flex items-center gap-2">
-                  <button 
-                      onClick={handleAiDescription} 
-                      disabled={isGeneratingDesc} 
-                      className="text-xs flex items-center gap-1 text-indigo-600 hover:text-indigo-800 bg-indigo-50 dark:bg-indigo-900/30 dark:text-indigo-300 px-3 py-1.5 rounded-full transition-colors font-medium border border-indigo-100 dark:border-indigo-800"
-                  >
-                    <Wand2 size={12} /> {isGeneratingDesc ? 'Gerando...' : 'Melhorar com IA'}
-                  </button>
-                  <button 
-                      onClick={handleSaveDescription} 
-                      disabled={isSavingDesc} 
-                      className="text-xs flex items-center gap-1 text-white bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-full transition-colors font-bold shadow-sm"
-                  >
-                    {isSavingDesc ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Salvar Descrição
-                  </button>
+              {/* Progress Bar */}
+              <div className="flex items-center gap-2 ml-auto">
+                   <div className="w-24 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                       <div className="h-full bg-indigo-500 transition-all duration-500" style={{width: `${task.progress}%`}}></div>
+                   </div>
+                   <span className="text-xs font-medium text-gray-500">{task.progress}%</span>
               </div>
           </div>
-          <textarea
-              value={task.description}
-              onChange={(e) => onUpdate({...task, description: e.target.value})}
-              // onBlur Removed to prevent auto-save conflict with manual save button logic if preferred, or keep it.
-              // We'll keep manual save as the primary action for description to follow user request.
-              rows={5}
-              className="w-full p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0f172a] text-sm text-gray-700 dark:text-gray-300 focus:ring-2 focus:ring-indigo-500 resize-none leading-relaxed shadow-sm"
-              placeholder="Descreva os detalhes da tarefa, requisitos e contexto..."
-          />
       </div>
 
-      {/* 4. Subtasks (Activities & Dates) */}
-      <div className="bg-white dark:bg-[#1e293b] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between bg-gray-50 dark:bg-[#1b263b]/50">
-               <label className="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200">
-                   <CheckSquare size={16} /> Atividades & Cronograma
-               </label>
-               <button 
-                   onClick={handleAiSubtasks} 
-                   disabled={isGeneratingSubs} 
-                   className="text-xs flex items-center gap-1 text-purple-600 bg-purple-50 dark:bg-purple-900/30 dark:text-purple-300 px-3 py-1.5 rounded-full font-medium border border-purple-100 dark:border-purple-800 hover:bg-purple-100 transition-colors"
-               >
-                   <Wand2 size={12} /> Sugerir Checklist
-               </button>
-          </div>
+      {/* 2. Main 2-Column Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 lg:gap-6">
           
-          <div className="p-4 space-y-3">
-              {/* Header Row */}
-              <div className="grid grid-cols-12 gap-4 px-2 mb-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  <div className="col-span-1 text-center">Feito?</div>
-                  <div className="col-span-4">Atividade</div>
-                  <div className="col-span-2">Início</div>
-                  <div className="col-span-2">Fim</div>
-                  <div className="col-span-3">Responsável</div>
-              </div>
-
-              {task.subtasks.map(st => {
-                  const assignee = users.find(u => u.id === st.assigneeId);
-                  return (
-                  <div key={st.id} className="grid grid-cols-12 gap-4 items-center group p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-[#2d3748] transition-colors border border-transparent hover:border-gray-100 dark:hover:border-gray-700">
-                      <div className="col-span-1 flex justify-center">
-                          <input 
-                            type="checkbox" 
-                            checked={st.completed} 
-                            onChange={() => toggleSubtask(st.id)} 
-                            className="w-5 h-5 rounded border-gray-300 cursor-pointer accent-indigo-600 focus:ring-indigo-500" 
-                          />
-                      </div>
-                      <div className="col-span-4">
-                          <input 
-                            type="text"
-                            value={st.title}
-                            onBlur={(e) => handleSubtaskChange(st.id, 'title', e.target.value)}
-                            onChange={(e) => {
-                                const updatedSubtasks = task.subtasks.map(s => s.id === st.id ? { ...s, title: e.target.value } : s);
-                                onUpdate({...task, subtasks: updatedSubtasks});
-                            }}
-                            className={`w-full bg-transparent border-none focus:ring-0 p-0 text-sm font-medium transition-colors ${st.completed ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-200'}`}
-                            placeholder="Nome da atividade"
-                          />
-                      </div>
-                      <div className="col-span-2">
-                          <input 
-                            type="date"
-                            value={st.startDate ? st.startDate.split('T')[0] : ''}
-                            onChange={(e) => handleSubtaskChange(st.id, 'startDate', e.target.value)}
-                            className="w-full text-xs bg-transparent border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-gray-600 dark:text-gray-400 focus:ring-1 focus:ring-indigo-500"
-                          />
-                      </div>
-                      <div className="col-span-2">
-                          {st.completed && st.completedAt ? (
-                              <span className="text-[10px] text-green-600 font-bold bg-green-50 px-2 py-1 rounded w-full block text-center">
-                                  {new Date(st.completedAt).toLocaleDateString()}
-                              </span>
-                          ) : (
-                            <input 
-                                type="date"
-                                value={st.dueDate ? st.dueDate.split('T')[0] : ''}
-                                onChange={(e) => handleSubtaskChange(st.id, 'dueDate', e.target.value)}
-                                className="w-full text-xs bg-transparent border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-gray-600 dark:text-gray-400 focus:ring-1 focus:ring-indigo-500"
-                            />
-                          )}
-                      </div>
-                      <div className="col-span-3 flex items-center gap-2">
-                          <div className="relative w-full flex items-center gap-2">
-                              {assignee ? (
-                                  <Avatar src={assignee.avatar} alt={assignee.name} size="sm" className="w-6 h-6 flex-shrink-0" />
-                              ) : (
-                                  <div className="w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[10px] text-gray-500 flex-shrink-0">?</div>
-                              )}
-                              <select
-                                 value={st.assigneeId || ''}
-                                 onChange={(e) => handleSubtaskChange(st.id, 'assigneeId', e.target.value)}
-                                 className="w-full text-xs bg-transparent border border-gray-200 dark:border-gray-600 rounded px-2 py-1 text-gray-600 dark:text-gray-400 focus:ring-1 focus:ring-indigo-500"
-                              >
-                                 <option value="">Sem dono</option>
-                                 {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                              </select>
-                          </div>
-                          <button onClick={() => deleteSubtask(st.id, st.title)} className="text-gray-400 hover:text-red-500 p-1 rounded opacity-0 group-hover:opacity-100 transition-all ml-auto">
-                              <Trash2 size={14} />
+          {/* LEFT COLUMN: Content (Description, Subtasks, Files) - Spans 8 */}
+          <div className="lg:col-span-8 space-y-6">
+              
+              {/* Description */}
+              <div className="group">
+                  <div className="flex items-center justify-between mb-2">
+                      <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          <Layout size={14} /> Descrição
+                      </label>
+                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={handleAiDescription} disabled={isGeneratingDesc} className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-1 rounded hover:bg-indigo-100 transition-colors flex items-center gap-1">
+                              <Wand2 size={10} /> IA
+                          </button>
+                          <button onClick={handleSaveDescription} disabled={isSavingDesc} className="text-[10px] bg-green-50 text-green-600 px-2 py-1 rounded hover:bg-green-100 transition-colors flex items-center gap-1">
+                              {isSavingDesc ? <Loader2 size={10} className="animate-spin"/> : <Save size={10} />} Salvar
                           </button>
                       </div>
                   </div>
-                  );
-              })}
+                  <textarea
+                      value={task.description}
+                      onChange={(e) => onUpdate({...task, description: e.target.value})}
+                      rows={4}
+                      className="w-full p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#0f172a] text-sm text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-[#1e293b] outline-none resize-y transition-all"
+                      placeholder="Adicione detalhes..."
+                  />
+              </div>
 
-              <button 
-                  onClick={addSubtask} 
-                  className="w-full py-3 mt-2 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-500 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all flex items-center justify-center gap-2 font-medium"
-              >
-                  <Plus size={16} /> Adicionar Nova Atividade
-              </button>
+              {/* Subtasks */}
+              <div>
+                  <div className="flex items-center justify-between mb-2 bg-gray-50 dark:bg-[#1b263b] p-2 rounded-lg border border-gray-200 dark:border-gray-700">
+                       <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                           <CheckSquare size={14} /> Checklist
+                       </label>
+                       <button onClick={handleAiSubtasks} disabled={isGeneratingSubs} className="text-[10px] text-purple-600 hover:bg-purple-100 px-2 py-1 rounded transition-colors flex items-center gap-1">
+                           <Wand2 size={10} /> Sugerir
+                       </button>
+                  </div>
+                  <div className="space-y-1">
+                      {task.subtasks.map(st => (
+                          <div key={st.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 dark:hover:bg-[#1e293b] rounded group transition-colors">
+                              <input 
+                                type="checkbox" 
+                                checked={st.completed} 
+                                onChange={() => toggleSubtask(st.id)} 
+                                className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                              />
+                              <input 
+                                className={`flex-1 bg-transparent border-none p-0 text-sm focus:ring-0 ${st.completed ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-200'}`}
+                                value={st.title}
+                                onChange={(e) => handleSubtaskChange(st.id, 'title', e.target.value)}
+                              />
+                              <input 
+                                type="date"
+                                value={st.dueDate ? st.dueDate.split('T')[0] : ''}
+                                onChange={(e) => handleSubtaskChange(st.id, 'dueDate', e.target.value)}
+                                className="w-24 text-[10px] bg-transparent text-gray-400 focus:text-gray-800 border-none p-0 text-right focus:ring-0"
+                              />
+                              <button onClick={() => deleteSubtask(st.id, st.title)} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Trash2 size={12} />
+                              </button>
+                          </div>
+                      ))}
+                      <button onClick={addSubtask} className="flex items-center gap-2 text-xs text-gray-400 hover:text-indigo-500 mt-2 pl-2 transition-colors">
+                          <Plus size={12} /> Adicionar item
+                      </button>
+                  </div>
+              </div>
+
+              {/* Attachments */}
+              <div>
+                  <div className="flex items-center justify-between mb-2 border-b border-gray-100 dark:border-gray-700 pb-1">
+                      <label className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                          <Paperclip size={14} /> Anexos ({task.attachments.length})
+                      </label>
+                      <button onClick={() => fileInputRef.current?.click()} className="text-[10px] bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 px-2 py-1 rounded transition-colors">
+                          {isUploading ? '...' : '+ Add'}
+                      </button>
+                      <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {task.attachments.map(att => (
+                          <div key={att.id} className="relative group border border-gray-200 dark:border-gray-700 rounded-lg p-2 flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-[#1e293b] transition-colors">
+                              <div className="p-1.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500">
+                                  {att.type === 'image' ? <ImageIcon size={14} /> : <FileText size={14} />}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-medium truncate">{att.name}</p>
+                                  <div className="flex gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button onClick={() => downloadAttachment(att.url, att.name)} className="text-[10px] text-blue-500 hover:underline">Baixar</button>
+                                      <button onClick={() => deleteAttachment(att.id, att.name)} className="text-[10px] text-red-500 hover:underline">Excluir</button>
+                                  </div>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+
+              {/* Timeline (Condensed) */}
+              <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
+                   <div className="text-xs font-bold text-gray-400 mb-3 flex items-center gap-2"><Clock size={12} /> Histórico Recente</div>
+                   <div className="space-y-3 pl-2 border-l border-gray-200 dark:border-gray-700 ml-1">
+                       {(task.timeline || []).slice(-5).reverse().map(event => (
+                           <div key={event.id} className="text-xs pl-3 relative">
+                               <div className="absolute -left-[5px] top-1.5 w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600 ring-2 ring-white dark:ring-[#1e293b]"></div>
+                               <div className="flex items-center gap-2">
+                                   <span className="font-bold text-gray-700 dark:text-gray-300">{event.userName || 'Sistema'}</span>
+                                   <span className="text-gray-400 text-[10px]">{new Date(event.createdAt).toLocaleString()}</span>
+                               </div>
+                               <p className="text-gray-500 dark:text-gray-400 mt-0.5">{event.reason || event.eventType}</p>
+                           </div>
+                       ))}
+                   </div>
+              </div>
           </div>
-      </div>
 
-      {/* 5. Attachments Section */}
-      <div className="bg-gray-50 dark:bg-[#1b263b]/30 p-5 rounded-xl border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between mb-4">
-                <label className="flex items-center gap-2 text-sm font-bold text-gray-700 dark:text-gray-300">
-                    <Paperclip size={16} /> Arquivos & Anexos
-                </label>
-                <button 
-                    onClick={() => fileInputRef.current?.click()} 
-                    disabled={isUploading} 
-                    className="text-xs flex items-center gap-1 text-gray-700 dark:text-gray-300 hover:text-white hover:bg-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 shadow-sm transition-all"
-                >
-                    {isUploading ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Upload
-                </button>
-                <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} />
-            </div>
+          {/* RIGHT COLUMN: Sidebar (Metadata & Actions) - Spans 4 */}
+          <div className="lg:col-span-4 bg-gray-50/50 dark:bg-[#1b263b]/30 rounded-xl p-4 border border-gray-200 dark:border-gray-700 h-fit space-y-6">
+              
+              {/* Project Move */}
+              <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Projeto</label>
+                  <div className="relative">
+                      <select 
+                          value={task.groupId} 
+                          onChange={(e) => handleFieldUpdate('groupId', e.target.value)}
+                          className="w-full appearance-none bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-600 rounded-lg py-2 pl-3 pr-8 text-xs font-bold text-gray-700 dark:text-gray-200 outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                      >
+                          {taskGroups.map(g => (
+                              <option key={g.id} value={g.id}>{g.title}</option>
+                          ))}
+                      </select>
+                      <Folder size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
+              </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {task.attachments.length === 0 && (
-                    <div className="col-span-full py-6 text-center text-gray-400 text-sm italic border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
-                        Nenhum arquivo anexado.
-                    </div>
-                )}
-                {task.attachments.map(att => (
-                    <div key={att.id} className="flex flex-col p-3 bg-white dark:bg-[#1e293b] border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm group hover:shadow-md transition-all">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3 overflow-hidden">
-                                <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-lg shrink-0">
-                                    {att.type === 'image' ? <ImageIcon size={18} /> : <FileText size={18} />}
-                                </div>
-                                <div className="flex flex-col min-w-0">
-                                    <a href={att.url} target="_blank" rel="noreferrer" className="text-sm font-bold text-gray-700 dark:text-gray-200 hover:text-indigo-600 truncate block max-w-[150px]">
-                                        {att.name}
-                                    </a>
-                                    <span className="text-[10px] text-gray-400">{new Date(att.createdAt).toLocaleDateString()}</span>
-                                </div>
-                            </div>
-                            <div className="flex gap-1">
-                                <a href={att.url} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-indigo-500 p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700" title="Visualizar">
-                                    <Eye size={14} />
-                                </a>
-                                <button onClick={() => downloadAttachment(att.url, att.name)} className="text-gray-400 hover:text-green-500 p-1.5 rounded hover:bg-green-50 dark:hover:bg-green-900/20" title="Baixar">
-                                    <Download size={14} />
-                                </button>
-                                <button onClick={() => deleteAttachment(att.id, att.name)} className="text-gray-400 hover:text-red-500 p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20" title="Excluir">
-                                    <Trash2 size={14} />
-                                </button>
-                            </div>
-                        </div>
-                        
-                        {/* Image Preview with Fallback */}
-                        {att.type === 'image' && (
-                            <div className="mt-3 relative w-full h-32 rounded-md overflow-hidden bg-gray-100 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 group/img">
-                                <img 
-                                    src={att.url} 
-                                    alt={att.name} 
-                                    className="w-full h-full object-cover transition-transform group-hover/img:scale-105" 
-                                    onError={(e) => {
-                                        (e.target as HTMLImageElement).style.display = 'none';
-                                        (e.target as HTMLImageElement).parentElement?.classList.add('flex', 'items-center', 'justify-center', 'text-gray-400', 'text-xs');
-                                        (e.target as HTMLImageElement).parentElement!.innerHTML = '<span class="flex flex-col items-center gap-1"><span class="text-red-400 font-bold">Erro ao carregar</span><span>Link quebrado ou privado</span></span>';
-                                    }}
-                                />
-                            </div>
-                        )}
-                    </div>
-                ))}
-            </div>
-      </div>
+              {/* Dates */}
+              <div className="grid grid-cols-2 gap-3">
+                  <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Início</label>
+                      <input 
+                          type="date"
+                          value={task.startDate ? task.startDate.split('T')[0] : ''}
+                          onChange={(e) => handleFieldUpdate('startDate', e.target.value)}
+                          className="w-full bg-transparent border-b border-gray-300 dark:border-gray-600 text-xs py-1 focus:border-indigo-500 outline-none text-gray-700 dark:text-gray-300"
+                      />
+                  </div>
+                  <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Entrega</label>
+                      <input 
+                          type="date"
+                          value={task.dueDate ? task.dueDate.split('T')[0] : ''}
+                          onChange={(e) => handleFieldUpdate('dueDate', e.target.value)}
+                          className={`w-full bg-transparent border-b text-xs py-1 focus:border-indigo-500 outline-none ${deadlineAlert ? 'border-red-300 text-red-600 font-bold' : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300'}`}
+                      />
+                  </div>
+              </div>
 
-      {/* 6. Timeline Section */}
-      <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-           <label className="flex items-center gap-2 text-sm font-bold text-gray-800 dark:text-gray-200 mb-6">
-                <Clock size={16} /> Linha do Tempo
-           </label>
-           
-           <div className="relative pl-6 space-y-8">
-               {/* Vertical Line */}
-               <div className="absolute top-2 bottom-2 left-2.5 w-0.5 bg-gray-200 dark:bg-gray-700"></div>
-               
-               {/* Timeline Events */}
-               {(task.timeline || []).length === 0 && (
-                   <p className="text-xs text-gray-400 italic pl-2">Nenhum evento registrado ainda.</p>
-               )}
-               {task.timeline && [...task.timeline].reverse().map((event, idx) => {
-                   let Icon = Clock;
-                   let color = "bg-gray-100 text-gray-500";
-                   
-                   switch(event.eventType) {
-                       case 'created': Icon = Plus; color = "bg-blue-100 text-blue-600"; break;
-                       case 'started': Icon = PlayCircle; color = "bg-green-100 text-green-600"; break;
-                       case 'completed': Icon = CheckCircle2; color = "bg-green-600 text-white"; break;
-                       case 'paused': Icon = PauseCircle; color = "bg-orange-100 text-orange-600"; break;
-                       case 'cancelled': Icon = XCircle; color = "bg-red-100 text-red-600"; break;
-                       case 'resumed': Icon = PlayCircle; color = "bg-blue-100 text-blue-600"; break;
-                       case 'subtask_update': Icon = CheckSquare; color = "bg-purple-100 text-purple-600"; break;
-                       case 'info': Icon = Info; color = "bg-gray-200 text-gray-600"; break;
-                   }
+              {/* Assignees */}
+              <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase mb-2 block">Responsável</label>
+                  <div className="flex flex-wrap gap-2">
+                      {users.map(u => (
+                          <button 
+                              key={u.id} 
+                              onClick={() => handleFieldUpdate('assigneeId', task.assigneeId === u.id ? null : u.id)}
+                              className={`relative w-8 h-8 rounded-full transition-all ${task.assigneeId === u.id ? 'ring-2 ring-indigo-500 ring-offset-2 dark:ring-offset-[#1b263b] z-10' : 'opacity-60 hover:opacity-100 hover:scale-110'}`}
+                              title={u.name}
+                          >
+                              <Avatar src={u.avatar} alt={u.name} size="md" />
+                              {task.assigneeId === u.id && <div className="absolute -bottom-1 -right-1 bg-indigo-500 rounded-full p-0.5 border border-white"><Check size={8} className="text-white"/></div>}
+                          </button>
+                      ))}
+                  </div>
+              </div>
 
-                   return (
-                       <div key={event.id} className="relative flex items-start gap-4 group">
-                            <div className={`absolute -left-[22px] w-8 h-8 rounded-full border-4 border-white dark:border-[#021221] flex items-center justify-center z-10 ${color}`}>
-                                <Icon size={14} />
-                            </div>
-                            <div className="flex-1 bg-gray-50 dark:bg-[#1b263b]/40 p-3 rounded-lg border border-gray-100 dark:border-gray-800">
-                                <div className="flex justify-between items-start mb-1">
-                                    <span className="text-xs font-bold text-gray-700 dark:text-gray-200 capitalize">
-                                        {event.eventType === 'subtask_update' ? 'Atividade' : event.eventType === 'status_change' ? 'Mudança de Status' : event.eventType === 'created' ? 'Criado' : event.eventType === 'started' ? 'Iniciado' : event.eventType === 'completed' ? 'Finalizado' : event.eventType === 'paused' ? 'Pausado' : event.eventType === 'cancelled' ? 'Cancelado' : event.eventType === 'info' ? 'Atualização' : 'Retomado'}
-                                    </span>
-                                    <span className="text-[10px] text-gray-400">
-                                        {new Date(event.createdAt).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'})}
-                                    </span>
-                                </div>
-                                <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                                    {event.reason || (event.oldStatus && event.newStatus ? `Alterado de ${event.oldStatus} para ${event.newStatus}` : 'Sem detalhes adicionais.')}
-                                </p>
-                                <div className="flex items-center gap-2">
-                                    <Avatar src={event.userAvatar} alt={event.userName || '?'} size="sm" className="w-5 h-5 text-[10px]" />
-                                    <span className="text-[10px] text-gray-500">{event.userName || 'Sistema'}</span>
-                                </div>
-                            </div>
-                       </div>
-                   )
-               })}
-           </div>
-      </div>
+              {/* Approval */}
+              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase mb-2 flex items-center justify-between">
+                      <span>Aprovação</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] ${task.approvalStatus === 'approved' ? 'bg-green-100 text-green-700' : task.approvalStatus === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-600'}`}>
+                          {task.approvalStatus === 'approved' ? 'APROVADO' : task.approvalStatus === 'rejected' ? 'REJEITADO' : 'PENDENTE'}
+                      </span>
+                  </label>
+                  
+                  {task.approverId && task.approverId === currentUser.id && task.approvalStatus === 'pending' ? (
+                      <div className="flex gap-2 mt-2">
+                          <button onClick={() => handleApprovalAction('approved')} className="flex-1 bg-green-500 hover:bg-green-600 text-white text-xs py-1.5 rounded font-bold flex justify-center items-center gap-1"><ThumbsUp size={12}/> Aprovar</button>
+                          <button onClick={() => handleApprovalAction('rejected')} className="flex-1 bg-red-500 hover:bg-red-600 text-white text-xs py-1.5 rounded font-bold flex justify-center items-center gap-1"><ThumbsDown size={12}/> Rejeitar</button>
+                      </div>
+                  ) : (
+                      <select 
+                          value={task.approverId || ''}
+                          onChange={(e) => handleApproverChange(e.target.value)}
+                          className="w-full mt-1 text-xs border-b border-gray-300 dark:border-gray-600 bg-transparent py-1 outline-none focus:border-indigo-500 text-gray-600 dark:text-gray-300"
+                      >
+                          <option value="">+ Adicionar Aprovador</option>
+                          {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                  )}
+              </div>
 
-      {/* Delete Footer */}
-      <div className="pt-8 border-t border-gray-100 dark:border-gray-800 flex justify-end">
-        <button 
-            onClick={() => onDelete(task.id)} 
-            className="flex items-center gap-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 px-4 py-2 rounded-lg text-sm font-bold transition-colors"
-        >
-          <Trash2 size={16} /> Excluir Tarefa Permanentemente
-        </button>
+              {/* Delete */}
+              <div className="pt-6 mt-auto">
+                  <button onClick={() => onDelete(task.id)} className="w-full text-xs text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 py-2 rounded transition-colors flex items-center justify-center gap-2">
+                      <Trash2 size={14} /> Excluir Tarefa
+                  </button>
+              </div>
+          </div>
       </div>
 
       {/* Status Reason Modal */}
       <Modal isOpen={showStatusReasonModal} onClose={() => { setShowStatusReasonModal(false); setPendingStatus(null); }} title={pendingStatus === 'Cancelado' ? 'Cancelar Tarefa' : 'Pausar Tarefa'} maxWidth="max-w-md">
            <div className="space-y-4">
                <p className="text-sm text-gray-600 dark:text-gray-300">
-                   Por favor, informe o motivo para {pendingStatus === 'Cancelado' ? 'cancelar' : 'pausar'} esta tarefa. Isso ficará registrado na linha do tempo.
+                   Por favor, informe o motivo para {pendingStatus === 'Cancelado' ? 'cancelar' : 'pausar'} esta tarefa.
                </p>
                <textarea 
                   autoFocus
-                  className="w-full p-3 border rounded-lg dark:bg-[#0f172a] dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full p-3 border rounded-lg dark:bg-[#0f172a] dark:border-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                   placeholder="Ex: Aguardando aprovação do cliente..."
                   rows={3}
                   value={statusReason}
                   onChange={(e) => setStatusReason(e.target.value)}
                />
                <div className="flex justify-end gap-2 pt-2">
-                   <button onClick={() => { setShowStatusReasonModal(false); setPendingStatus(null); }} className="px-4 py-2 text-gray-500 text-sm font-bold">Cancelar</button>
+                   <button onClick={() => { setShowStatusReasonModal(false); setPendingStatus(null); }} className="px-4 py-2 text-gray-500 text-xs font-bold">Cancelar</button>
                    <button 
                     onClick={confirmStatusChange} 
                     disabled={!statusReason.trim()}
-                    className={`px-4 py-2 text-white text-sm font-bold rounded-lg ${pendingStatus === 'Cancelado' ? 'bg-red-600 hover:bg-red-700' : 'bg-orange-500 hover:bg-orange-600'} disabled:opacity-50`}
+                    className={`px-4 py-2 text-white text-xs font-bold rounded-lg ${pendingStatus === 'Cancelado' ? 'bg-red-600 hover:bg-red-700' : 'bg-orange-500 hover:bg-orange-600'} disabled:opacity-50`}
                    >
                        Confirmar
                    </button>
