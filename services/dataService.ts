@@ -65,12 +65,12 @@ const mapTask = (t: any): Task => ({
 });
 
 // --- Constants ---
-// IDs textuais simples para garantir consistência
+// IDs textuais simples para garantir consistência e alinhamento com os novos status
 const DEFAULT_COLUMNS = [
-  { id: 'backlog', title: 'Tarefas (Entrada)', color: 'bg-gray-100 dark:bg-gray-800' },
-  { id: 'prioridade', title: 'Prioridade', color: 'bg-blue-100 dark:bg-blue-900/30' },
-  { id: 'analise', title: 'Em Análise', color: 'bg-purple-100 dark:bg-purple-900/30' },
-  { id: 'finalizado', title: 'Finalizado Visual', color: 'bg-green-100 dark:bg-green-900/30' }
+  { id: 'afazer', title: 'A Fazer', color: 'bg-gray-100 dark:bg-gray-800' },
+  { id: 'progresso', title: 'Em Progresso', color: 'bg-blue-100 dark:bg-blue-900/30' },
+  { id: 'revisao', title: 'Em Revisão', color: 'bg-purple-100 dark:bg-purple-900/30' },
+  { id: 'concluido', title: 'Concluído', color: 'bg-green-100 dark:bg-green-900/30' }
 ];
 
 export const api = {
@@ -152,7 +152,7 @@ export const api = {
            if (!createErr && createdCols) {
                mappedColumns = createdCols.map((c:any) => ({ id: c.id, title: c.title, color: c.color }));
            } else {
-               // Fallback final memória (pode causar erro de FK na criação de task, mas permite visualização)
+               // Fallback final memória
                mappedColumns = DEFAULT_COLUMNS;
            }
       }

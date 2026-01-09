@@ -430,12 +430,16 @@ export const TaskDetail: React.FC<TaskDetailProps> = ({ task, users, columns, cu
                               task.status === 'Cancelado' ? 'bg-red-100 text-red-700 border-red-200' :
                               task.status === 'Em Pausa' ? 'bg-orange-100 text-orange-700 border-orange-200' :
                               task.status === 'Em Progresso' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                              task.status === 'Em Revisão' ? 'bg-purple-100 text-purple-700 border-purple-200' :
                               'bg-gray-100 text-gray-700 border-gray-200'
                             }`}
                       >
-                        {columns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                        {!columns.find(c => c.id === 'Em Pausa') && <option value="Em Pausa">Em Pausa</option>}
-                        {!columns.find(c => c.id === 'Cancelado') && <option value="Cancelado">Cancelado</option>}
+                        <option value="A Fazer">A Fazer</option>
+                        <option value="Em Progresso">Em Progresso</option>
+                        <option value="Em Revisão">Em Revisão</option>
+                        <option value="Em Pausa">Em Pausa</option>
+                        <option value="Concluído">Concluído</option>
+                        <option value="Cancelado">Cancelado</option>
                       </select>
                       <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-current opacity-70 pointer-events-none" />
                   </div>
