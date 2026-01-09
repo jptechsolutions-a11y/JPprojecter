@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2, Calendar as CalendarIcon, Clock, Trash2, AlertCircle, AlertTriangle, X, Edit2, Check, Inbox } from 'lucide-react';
+import { Layout, Columns, Users, Settings, Plus, Search, CalendarRange, List, BarChart3, ChevronDown, ChevronLeft, ChevronRight, LogOut, Repeat, Sun, Moon, FolderPlus, Building2, Loader2, Calendar as CalendarIcon, Clock, Trash2, AlertCircle, AlertTriangle, X, Edit2, Check, Inbox, Palette } from 'lucide-react';
 import { Avatar } from './components/Avatar';
 import { Modal } from './components/Modal';
 import { TaskDetail } from './components/TaskDetail';
@@ -31,7 +31,10 @@ const SidebarItem = ({ icon: Icon, label, active, onClick, collapsed }: any) => 
   </button>
 );
 
-const TaskCard: React.FC<{ task: Task; allUsers: User[]; onClick: () => void; onDragStart: (e: React.DragEvent, task: Task) => void }> = ({ task, allUsers, onClick, onDragStart }) => {
+const TaskCard: React.FC<{ task: Task; allUsers: User[]; onClick: () => void; onDragStart: (e: React.DragEvent, task: Task) => void; onUpdate: (task: Task) => void; }> = ({ task, allUsers, onClick, onDragStart, onUpdate }) => {
+  const [showColorPicker, setShowColorPicker] = useState(false);
+
+  // Updated compact logic
   const priorityColors = {
     'Baixa': 'bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-200 border-teal-200 dark:border-teal-800',
     'Média': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-200 border-yellow-200 dark:border-yellow-800',
@@ -46,6 +49,21 @@ const TaskCard: React.FC<{ task: Task; allUsers: User[]; onClick: () => void; on
       'Concluído': 'bg-green-100 text-green-700 border-green-200',
       'Cancelado': 'bg-red-100 text-red-700 border-red-200',
   };
+
+  // Card Background Color Options
+  const cardColors = [
+      { id: 'default', bg: 'bg-white dark:bg-[#1e293b]', text: 'text-gray-800 dark:text-gray-100' },
+      { id: 'blue', bg: 'bg-blue-600', text: 'text-white' },
+      { id: 'green', bg: 'bg-green-600', text: 'text-white' },
+      { id: 'red', bg: 'bg-red-600', text: 'text-white' },
+      { id: 'yellow', bg: 'bg-yellow-500', text: 'text-white' },
+      { id: 'purple', bg: 'bg-purple-600', text: 'text-white' },
+      { id: 'orange', bg: 'bg-orange-500', text: 'text-white' },
+      { id: 'gray', bg: 'bg-gray-600', text: 'text-white' },
+  ];
+
+  const selectedColor = cardColors.find(c => c.id === task.color) || cardColors[0];
+  const isColored = selectedColor.id !== 'default';
 
   const completedSubtasks = task.subtasks.filter(s => s.completed).length;
 
@@ -72,52 +90,83 @@ const TaskCard: React.FC<{ task: Task; allUsers: User[]; onClick: () => void; on
   const supportUsers = allUsers.filter(u => task.supportIds?.includes(u.id));
   const responsibles = Array.from(new Set([assignee, ...supportUsers].filter(Boolean))) as User[];
 
+  const handleColorChange = (e: React.MouseEvent, colorId: string) => {
+      e.stopPropagation();
+      onUpdate({ ...task, color: colorId });
+      setShowColorPicker(false);
+  };
+
   return (
     <div 
       draggable
       onDragStart={(e) => onDragStart(e, task)}
       onClick={onClick}
-      className="bg-white dark:bg-[#1e293b] p-3 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group relative overflow-hidden"
+      onMouseEnter={() => setShowColorPicker(true)}
+      onMouseLeave={() => setShowColorPicker(false)}
+      className={`${selectedColor.bg} p-2.5 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 hover:shadow-md transition-all cursor-grab active:cursor-grabbing group relative overflow-hidden`}
     >
-      <div className="flex justify-between items-start mb-2">
-        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${priorityColors[task.priority]}`}>
-          {task.priority}
-        </span>
-        <div className="flex -space-x-2 overflow-hidden pl-1">
+      {/* Color Picker Popover */}
+      {showColorPicker && (
+          <div className="absolute top-1 right-1 z-20 flex gap-1 bg-white dark:bg-[#0f172a] p-1 rounded shadow-lg border border-gray-200 dark:border-gray-600 animate-fade-in">
+              {cardColors.map(c => (
+                  <button 
+                    key={c.id} 
+                    onClick={(e) => handleColorChange(e, c.id)}
+                    className={`w-3 h-3 rounded-full ${c.bg === 'bg-white dark:bg-[#1e293b]' ? 'bg-gray-200' : c.bg} hover:scale-125 transition-transform border border-gray-300 dark:border-gray-600`}
+                    title={c.id}
+                  />
+              ))}
+          </div>
+      )}
+
+      {/* Header Info */}
+      <div className="flex justify-between items-start mb-1.5">
+        {/* Only show priority badge if not colored background to reduce noise */}
+        {!isColored && (
+            <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full border ${priorityColors[task.priority]}`}>
+            {task.priority}
+            </span>
+        )}
+        {isColored && <div className="h-4"></div>} {/* Spacer */}
+        
+        <div className="flex -space-x-1.5 overflow-hidden pl-1">
             {responsibles.slice(0, 3).map(u => (
-                <Avatar key={u.id} src={u.avatar} alt={u.name} size="sm" className="inline-block ring-2 ring-white dark:ring-[#1e293b] w-5 h-5 text-[9px]" />
+                <Avatar key={u.id} src={u.avatar} alt={u.name} size="sm" className="inline-block ring-1 ring-white dark:ring-[#1e293b] w-4 h-4 text-[8px]" />
             ))}
         </div>
       </div>
       
-      <h3 className="text-gray-800 dark:text-gray-100 font-semibold mb-2 leading-tight group-hover:text-[#00b4d8] transition-colors text-xs line-clamp-2">
+      <h3 className={`${selectedColor.text} font-semibold mb-1.5 leading-snug text-xs line-clamp-3`}>
         {task.title}
       </h3>
       
-      <div className="flex flex-wrap gap-1 mb-2">
+      <div className="flex flex-wrap gap-1 mb-1.5">
           {deadline && (
               <div className={`flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded w-fit ${deadline.color}`}>
                   <deadline.icon size={10} /> {deadline.label}
               </div>
           )}
           {/* Mostra o Status real da tarefa, pois a coluna é só visual */}
-          <div className={`text-[9px] font-bold px-1.5 py-0.5 rounded border w-fit ${statusColors[task.status] || 'bg-gray-100 border-gray-200'}`}>
-              {task.status}
-          </div>
+          {!isColored && (
+            <div className={`text-[9px] font-bold px-1.5 py-0.5 rounded border w-fit ${statusColors[task.status] || 'bg-gray-100 border-gray-200'}`}>
+                {task.status}
+            </div>
+          )}
       </div>
       
-      <div className="w-full bg-gray-100 dark:bg-gray-700 h-1 rounded-full mt-1 mb-2 overflow-hidden">
+      {/* Progress Bar Compact */}
+      <div className="w-full bg-gray-200/50 dark:bg-gray-700/50 h-1 rounded-full mt-1 mb-1.5 overflow-hidden">
         <div 
-            className={`h-full rounded-full transition-all duration-500 ${task.progress === 100 ? 'bg-teal-500' : 'bg-[#00b4d8]'}`} 
+            className={`h-full rounded-full transition-all duration-500 ${isColored ? 'bg-white/80' : (task.progress === 100 ? 'bg-teal-500' : 'bg-[#00b4d8]')}`} 
             style={{ width: `${task.progress}%` }}
         ></div>
       </div>
 
-      <div className="flex items-center justify-between text-gray-400 dark:text-gray-500 text-[10px]">
+      <div className={`flex items-center justify-between ${isColored ? 'text-white/80' : 'text-gray-400 dark:text-gray-500'} text-[10px]`}>
         <div className="flex items-center gap-2">
            {task.subtasks.length > 0 && (
              <span className="flex items-center gap-1" title="Checklist">
-               <span className={completedSubtasks === task.subtasks.length ? 'text-teal-500' : ''}>
+               <span className={completedSubtasks === task.subtasks.length ? (isColored ? 'font-bold' : 'text-teal-500') : ''}>
                  {completedSubtasks}/{task.subtasks.length}
                </span>
              </span>
@@ -424,7 +473,8 @@ export default function App() {
       assigneeId: newTaskAssignee || undefined, // Set Assignee
       tags: [], subtasks: [] as any, progress: 0, attachments: [], comments: [],
       createdAt: new Date().toISOString(), teamId: currentTeamId || '',
-      approvalStatus: 'none'
+      approvalStatus: 'none',
+      color: 'default' // Default color
     };
     
     // Create task WITH subtasks
@@ -496,6 +546,7 @@ export default function App() {
   return (
     <div className={`flex h-screen bg-gray-50 dark:bg-[#021221] text-gray-900 dark:text-gray-100`}>
       <aside className={`${isSidebarCollapsed ? 'w-16' : 'w-56'} bg-white dark:bg-[#1e293b] border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 relative z-30 shadow-sm`}>
+        {/* ... Sidebar content same as before ... */}
         <button onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} className="absolute -right-3 top-8 bg-white dark:bg-[#0f172a] border border-gray-200 dark:border-gray-600 rounded-full p-1 shadow-md text-gray-500 hover:text-[#00b4d8] z-10">
             {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
@@ -561,6 +612,7 @@ export default function App() {
 
       <main className="flex-1 flex flex-col overflow-hidden bg-gray-50 dark:bg-[#021221] transition-colors relative">
         <header className="h-16 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 bg-white dark:bg-[#1e293b] shrink-0 z-20 shadow-sm relative">
+           {/* ... Header content ... */}
            <div className="flex items-center gap-4">
                <h2 className="text-xl font-bold text-gray-800 dark:text-white whitespace-nowrap">
                   Time de Planejamento
@@ -654,7 +706,14 @@ export default function App() {
                            {/* Cards Container */}
                            <div className="p-2 space-y-2 overflow-y-auto flex-1 custom-scrollbar min-h-[50px]">
                              {columnTasks.map(task => (
-                               <TaskCard key={task.id} task={task} allUsers={users} onClick={() => handleTaskClick(task)} onDragStart={(e, t) => e.dataTransfer.setData('taskId', t.id)} />
+                               <TaskCard 
+                                key={task.id} 
+                                task={task} 
+                                allUsers={users} 
+                                onClick={() => handleTaskClick(task)} 
+                                onDragStart={(e, t) => e.dataTransfer.setData('taskId', t.id)}
+                                onUpdate={handleUpdateTask}
+                               />
                              ))}
                            </div>
 
@@ -701,6 +760,7 @@ export default function App() {
                </div>
            )}
 
+           {/* ... Other views ... */}
            {activeView === 'gantt' && <div className="p-6 h-full"><GanttView tasks={filteredTasks} users={users} onTaskClick={handleTaskClick} /></div>}
            {activeView === 'dashboard' && <div className="p-6"><DashboardView tasks={tasks.filter(t => t.teamId === currentTeamId)} users={users} /></div>}
            {activeView === 'routines' && <div className="p-6"><RoutineTasksView routines={routines} users={users} currentTeamId={currentTeamId || ''} onToggleRoutine={(id) => { api.updateRoutine(id, { lastCompletedDate: new Date().toISOString().split('T')[0] }).then(loadData); }} onAddRoutine={async (r) => { await api.createRoutine(r); loadData(); }} /></div>}
@@ -709,6 +769,7 @@ export default function App() {
         </div>
       </main>
 
+      {/* ... Modals (New Task, New Project) keep same ... */}
       {/* Task Modal */}
       <Modal isOpen={!!selectedTask} onClose={() => setSelectedTask(null)} title="Detalhes da Tarefa">
         {selectedTask && currentUser && <TaskDetail task={selectedTask} users={users} columns={columns} currentUser={currentUser} onUpdate={handleUpdateTask} onDelete={handleDeleteTask} onRequestApproval={() => {}} />}
@@ -717,6 +778,7 @@ export default function App() {
       {/* New Task Modal Expanded */}
       <Modal isOpen={isNewTaskModalOpen} onClose={() => setIsNewTaskModalOpen(false)} title="Criar Nova Tarefa" maxWidth="max-w-2xl">
         <form onSubmit={handleCreateTask} className="space-y-6">
+          {/* ... Task Form Fields ... */}
           <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-bold mb-1 dark:text-gray-300">Título da Tarefa</label>
@@ -766,6 +828,7 @@ export default function App() {
 
           {/* Subtasks Section */}
           <div className="bg-gray-50 dark:bg-[#0f172a] p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+              {/* ... Subtask UI same as before ... */}
               <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 flex items-center justify-between">
                   <span>Atividades da Tarefa</span>
                   <span className="text-xs font-normal text-gray-500">Defina responsável e prazo para cada etapa</span>

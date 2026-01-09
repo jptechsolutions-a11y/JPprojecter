@@ -103,7 +103,8 @@ export interface Task {
   teamId: string;
   approvalStatus: ApprovalStatus;
   approverId?: string;
-  timeline?: TaskTimelineEntry[]; 
+  timeline?: TaskTimelineEntry[];
+  color?: string; // Cor de fundo do card
 }
 
 export interface Column {

@@ -61,7 +61,8 @@ const mapTask = (t: any): Task => ({
     text: c.text,
     createdAt: c.created_at
   })),
-  timeline: [] 
+  timeline: [],
+  color: t.color // Mapeia cor
 });
 
 // --- Constants ---
@@ -443,7 +444,8 @@ export const api = {
       kanban_column_id: task.kanbanColumnId, 
       assignee_id: task.assigneeId, 
       start_date: task.startDate, 
-      due_date: task.dueDate
+      due_date: task.dueDate,
+      color: task.color
     };
 
     // Tenta inserir
@@ -493,7 +495,8 @@ export const api = {
       progress: task.progress, approval_status: task.approvalStatus, approver_id: task.approverId,
       start_date: task.startDate, due_date: task.dueDate,
       started_at: task.startedAt, completed_at: task.completedAt,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      color: task.color
     };
 
     const { error } = await supabase.from('tasks').update(dbUpdates).eq('id', task.id);
