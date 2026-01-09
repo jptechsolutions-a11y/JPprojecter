@@ -13,7 +13,7 @@ import { RoutineTasksView } from './components/RoutineTasksView';
 import { TeamView } from './components/TeamView';
 import { ProfileView } from './components/ProfileView'; 
 import { FilterPopover, FilterState } from './components/FilterPopover';
-import { Task, User, Column, Status, Team, TaskGroup, RoutineTask, Notification, TeamRole, Subtask } from './types';
+import { Task, User, Column, Status, Team, TaskGroup, RoutineTask, AppNotification, TeamRole, Subtask } from './types';
 import { api } from './services/dataService'; 
 import { supabase } from './services/supabaseClient';
 
@@ -114,7 +114,7 @@ export default function App() {
   const [taskGroups, setTaskGroups] = useState<TaskGroup[]>([]);
   const [columns, setColumns] = useState<Column[]>([]);
   const [routines, setRoutines] = useState<RoutineTask[]>([]);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [roles, setRoles] = useState<TeamRole[]>([]);
   
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -267,7 +267,7 @@ export default function App() {
           // New notification received
           const newNotif = payload.new;
           
-          const mappedNotif: Notification = {
+          const mappedNotif: AppNotification = {
             id: newNotif.id,
             userId: newNotif.user_id,
             taskId: newNotif.task_id,
@@ -280,7 +280,7 @@ export default function App() {
           
           setNotifications(prev => [mappedNotif, ...prev]);
           
-          // Browser Notification
+          // Browser Notification (Uses global Notification object)
           if (Notification.permission === 'granted') {
              new Notification(mappedNotif.title, { body: mappedNotif.message });
           }
@@ -376,7 +376,7 @@ export default function App() {
       }
   };
 
-  const handleNotificationClick = async (notification: Notification) => {
+  const handleNotificationClick = async (notification: AppNotification) => {
       await api.markNotificationAsRead(notification.id);
       setNotifications(prev => prev.map(n => n.id === notification.id ? { ...n, read: true } : n));
       

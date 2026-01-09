@@ -1,6 +1,6 @@
 
 import { supabase } from './supabaseClient';
-import { Task, User, Team, TaskGroup, Column, RoutineTask, Notification, Subtask, Attachment, Comment, Meeting, TeamRole, TaskTimelineEntry } from '../types';
+import { Task, User, Team, TaskGroup, Column, RoutineTask, AppNotification, Subtask, Attachment, Comment, Meeting, TeamRole, TaskTimelineEntry } from '../types';
 
 // --- Mappers ---
 

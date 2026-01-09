@@ -182,7 +182,7 @@ export interface DevProject {
     createdAt: string;
 }
 
-export interface Notification {
+export interface AppNotification {
     id: string;
     userId: string;
     type: 'info' | 'approval' | 'alert' | 'success';
